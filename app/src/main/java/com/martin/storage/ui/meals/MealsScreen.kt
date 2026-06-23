@@ -1,0 +1,526 @@
+package com.martin.storage.ui.meals
+
+import androidx.compose.animation.*
+import androidx.compose.foundation.*
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.*
+import androidx.compose.foundation.pager.*
+import androidx.compose.foundation.shape.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.*
+import androidx.compose.material3.*
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
+import androidx.compose.runtime.*
+import androidx.compose.ui.*
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.*
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.martin.storage.data.model.*
+import com.martin.storage.data.repository.AppRepository
+import com.martin.storage.ui.components.*
+import com.martin.storage.ui.theme.*
+import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.*
+
+private val tabTitles = listOf("Recipes", "Meal Plan", "Prepared")
+
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
+@Composable
+fun MealsScreen(
+    repository: AppRepository,
+    onOpenRecipe: (String) -> Unit,
+    onEditRecipe: (String) -> Unit,
+    onAddRecipe: () -> Unit,
+    viewModel: MealsViewModel = viewModel(factory = MealsViewModelFactory(repository))
+) {
+    val state by viewModel.state.collectAsState()
+    val pagerState = rememberPagerState(pageCount = { 3 })
+    val scope = rememberCoroutineScope()
+    val snackbar = remember { SnackbarHostState() }
+
+    Scaffold(
+        topBar = {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .background(Surface.copy(alpha = 0.97f))
+                    .statusBarsPadding()
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Meals & Recipes", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = Primary)
+                    if (state.canUndo) {
+                        IconButton(onClick = {
+                            if (pagerState.currentPage == 0) viewModel.undoRecipes()
+                            else viewModel.undoMealPlan()
+                        }) {
+                            Icon(Icons.Outlined.Undo, "Undo", tint = Primary)
+                        }
+                    }
+                }
+                TabRow(
+                    selectedTabIndex = pagerState.currentPage,
+                    containerColor = Color.Transparent,
+                    contentColor = Primary,
+                    indicator = { tabs ->
+                        TabRowDefaults.SecondaryIndicator(
+                            Modifier.tabIndicatorOffset(tabs[pagerState.currentPage]),
+                            color = Primary
+                        )
+                    }
+                ) {
+                    tabTitles.forEachIndexed { idx, title ->
+                        Tab(
+                            selected = pagerState.currentPage == idx,
+                            onClick = { scope.launch { pagerState.animateScrollToPage(idx) } },
+                            text = { Text(title, fontWeight = if (pagerState.currentPage == idx) FontWeight.SemiBold else FontWeight.Normal) },
+                            selectedContentColor = Primary,
+                            unselectedContentColor = OnSurfaceVariant
+                        )
+                    }
+                }
+            }
+        },
+        floatingActionButton = {
+            if (pagerState.currentPage == 0) {
+                ExtendedFloatingActionButton(
+                    onClick = onAddRecipe,
+                    containerColor = Primary,
+                    contentColor = OnPrimary,
+                    icon = { Icon(Icons.Default.Add, null) },
+                    text = { Text("New Recipe") }
+                )
+            }
+        },
+        snackbarHost = { UndoSnackbarHost(snackbar) }
+    ) { padding ->
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize().padding(padding)
+        ) { page ->
+            when (page) {
+                0 -> RecipesTab(
+                    state = state,
+                    onOpenRecipe = onOpenRecipe,
+                    onEditRecipe = onEditRecipe,
+                    onDeleteRecipe = { id ->
+                        viewModel.deleteRecipe(id)
+                        scope.launch {
+                            val r = snackbar.showSnackbar("Recipe deleted", "Undo", SnackbarDuration.Short)
+                            if (r == SnackbarResult.ActionPerformed) viewModel.undoRecipes()
+                        }
+                    },
+                    onCookNow = { recipe ->
+                        viewModel.logMealAsCooked(recipe, 1.0)
+                        scope.launch { snackbar.showSnackbar("✓ ${recipe.name} logged!") }
+                    },
+                    onSearchChange = viewModel::setSearch,
+                    onFilterMealType = viewModel::setMealTypeFilter,
+                    canMake = viewModel::canMakeRecipe
+                )
+                1 -> MealPlanTab(
+                    state = state,
+                    onRemoveEntry = { id ->
+                        viewModel.removeMealPlanEntry(id)
+                        scope.launch {
+                            val r = snackbar.showSnackbar("Entry removed", "Undo", SnackbarDuration.Short)
+                            if (r == SnackbarResult.ActionPerformed) viewModel.undoMealPlan()
+                        }
+                    },
+                    onGenerate = viewModel::generateWeeklyPlan,
+                    onClear = viewModel::clearWeekPlan,
+                    onAddEntry = { entry -> viewModel.addMealPlanEntry(entry) },
+                    recipes = state.recipes
+                )
+                2 -> PreparedTab(
+                    meals = state.recentPrepared,
+                    onDelete = viewModel::deletePreparedMeal
+                )
+            }
+        }
+    }
+}
+
+// ── Recipes Tab ───────────────────────────────────────────────────────────────
+
+@Composable
+private fun RecipesTab(
+    state: MealsUiState,
+    onOpenRecipe: (String) -> Unit,
+    onEditRecipe: (String) -> Unit,
+    onDeleteRecipe: (String) -> Unit,
+    onCookNow: (Recipe) -> Unit,
+    onSearchChange: (String) -> Unit,
+    onFilterMealType: (String?) -> Unit,
+    canMake: (Recipe) -> Boolean
+) {
+    Column(Modifier.fillMaxSize()) {
+        // Search
+        OutlinedTextField(
+            value = state.searchQuery,
+            onValueChange = onSearchChange,
+            placeholder = { Text("Search recipes…") },
+            leadingIcon = { Icon(Icons.Default.Search, null, tint = OnSurfaceVariant) },
+            trailingIcon = {
+                if (state.searchQuery.isNotBlank())
+                    IconButton(onClick = { onSearchChange("") }) { Icon(Icons.Default.Clear, null) }
+            },
+            singleLine = true,
+            shape = RoundedCornerShape(14.dp),
+            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Primary, unfocusedBorderColor = OutlineVariant),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp)
+        )
+        // Meal type filter
+        Row(
+            Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            FilterChip("All", state.selectedMealType == null, { onFilterMealType(null) })
+            MealType.entries.forEach { type ->
+                FilterChip("${type.emoji} ${type.label}", state.selectedMealType == type.name, { onFilterMealType(type.name) })
+            }
+        }
+
+        if (state.filteredRecipes.isEmpty()) {
+            EmptyState(
+                icon = { Icon(Icons.Outlined.MenuBook, null, Modifier.size(36.dp), tint = OnSurfaceVariant) },
+                title = "No Recipes",
+                subtitle = "Add recipes to plan your meals",
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            LazyColumn(
+                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(state.filteredRecipes, key = { it.id }) { recipe ->
+                    RecipeCard(
+                        recipe = recipe,
+                        canMake = canMake(recipe),
+                        onClick = { onOpenRecipe(recipe.id) },
+                        onEdit = { onEditRecipe(recipe.id) },
+                        onDelete = { onDeleteRecipe(recipe.id) },
+                        onCookNow = { onCookNow(recipe) }
+                    )
+                }
+                item { Spacer(Modifier.height(80.dp)) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecipeCard(
+    recipe: Recipe,
+    canMake: Boolean,
+    onClick: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+    onCookNow: () -> Unit
+) {
+    var showMenu by remember { mutableStateOf(false) }
+
+    GlassCard(modifier = Modifier.fillMaxWidth(), onClick = onClick) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(recipe.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        "${recipe.prepTimeMinutes + recipe.cookTimeMinutes} min · ${recipe.servings} servings",
+                        style = MaterialTheme.typography.bodySmall, color = OnSurfaceVariant
+                    )
+                }
+                Box {
+                    IconButton(onClick = { showMenu = true }) {
+                        Icon(Icons.Default.MoreVert, null, tint = OnSurfaceVariant)
+                    }
+                    DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                        DropdownMenuItem(text = { Text("Edit") }, leadingIcon = { Icon(Icons.Outlined.Edit, null) }, onClick = { showMenu = false; onEdit() })
+                        DropdownMenuItem(text = { Text("Delete", color = Error) }, leadingIcon = { Icon(Icons.Outlined.Delete, null, tint = Error) }, onClick = { showMenu = false; onDelete() })
+                    }
+                }
+            }
+
+            if (recipe.tags.isNotEmpty()) {
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    recipe.tags.take(4).forEach { tag ->
+                        NutrientChip(tag, color = TertiaryContainer.copy(.25f), textColor = Tertiary)
+                    }
+                }
+            }
+
+            // Nutrition summary
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                MacroStat("${recipe.nutritionPerServing.calories.toInt()} kcal", "Cal", Primary)
+                MacroStat("${recipe.nutritionPerServing.protein.toInt()}g", "Protein", Tertiary)
+                MacroStat("${recipe.nutritionPerServing.carbs.toInt()}g", "Carbs", Secondary)
+            }
+
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                NutrientChip(
+                    if (canMake) "✓ Can Make" else "⚠ Missing Items",
+                    color = if (canMake) TertiaryContainer.copy(.3f) else SecondaryContainer.copy(.3f),
+                    textColor = if (canMake) Tertiary else Secondary
+                )
+                if (canMake) {
+                    FilledTonalButton(
+                        onClick = onCookNow,
+                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = Primary.copy(.12f), contentColor = Primary),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                    ) {
+                        Icon(Icons.Default.CheckCircle, null, Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Cook Now", style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MacroStat(value: String, label: String, color: Color) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(value, style = MaterialTheme.typography.labelLarge, color = color, fontWeight = FontWeight.Bold)
+        Text(label, style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariant)
+    }
+}
+
+// ── Meal Plan Tab ─────────────────────────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MealPlanTab(
+    state: MealsUiState,
+    onRemoveEntry: (String) -> Unit,
+    onGenerate: () -> Unit,
+    onClear: () -> Unit,
+    onAddEntry: (MealPlanEntry) -> Unit,
+    recipes: List<Recipe>
+) {
+    var showAddDialog by remember { mutableStateOf(false) }
+
+    Column(Modifier.fillMaxSize()) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Button(
+                onClick = onGenerate,
+                enabled = !state.isGenerating && recipes.isNotEmpty(),
+                colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                modifier = Modifier.weight(1f)
+            ) {
+                if (state.isGenerating) {
+                    CircularProgressIndicator(Modifier.size(16.dp), color = OnPrimary, strokeWidth = 2.dp)
+                } else {
+                    Icon(Icons.Default.AutoAwesome, null, Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Auto-Generate")
+                }
+            }
+            OutlinedButton(
+                onClick = { showAddDialog = true },
+                modifier = Modifier.weight(1f)
+            ) {
+                Icon(Icons.Default.Add, null, Modifier.size(16.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Manual Add")
+            }
+        }
+
+        if (state.weekPlanByDay.isEmpty()) {
+            EmptyState(
+                icon = { Icon(Icons.Outlined.DateRange, null, Modifier.size(36.dp), tint = OnSurfaceVariant) },
+                title = "No Meal Plan Yet",
+                subtitle = "Generate a plan or add meals manually",
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            LazyColumn(contentPadding = PaddingValues(horizontal = 20.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                state.weekPlanByDay.forEach { (date, entries) ->
+                    item(key = "header_$date") {
+                        val formatted = try {
+                            val d = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).parse(date)
+                            SimpleDateFormat("EEEE, d MMM", Locale.getDefault()).format(d!!)
+                        } catch (_: Exception) { date }
+                        Text(formatted, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = OnSurfaceVariant,
+                            modifier = Modifier.padding(top = 8.dp))
+                    }
+                    items(entries, key = { it.id }) { entry ->
+                        MealPlanEntryCard(entry = entry, onRemove = { onRemoveEntry(entry.id) })
+                    }
+                }
+                item { Spacer(Modifier.height(80.dp)) }
+            }
+        }
+    }
+
+    if (showAddDialog) {
+        AddMealPlanDialog(
+            recipes = recipes,
+            onAdd = { entry -> onAddEntry(entry); showAddDialog = false },
+            onDismiss = { showAddDialog = false }
+        )
+    }
+}
+
+@Composable
+private fun MealPlanEntryCard(entry: MealPlanEntry, onRemove: () -> Unit) {
+    val mealType = MealType.entries.find { it.name == entry.mealType }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(SurfaceContainerLowest)
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Box(
+            Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(PrimaryContainer.copy(.2f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(mealType?.emoji ?: "🍽️", style = MaterialTheme.typography.bodyLarge)
+        }
+        Column(Modifier.weight(1f)) {
+            Text(entry.recipeName, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(mealType?.label ?: entry.mealType, style = MaterialTheme.typography.bodySmall, color = OnSurfaceVariant)
+        }
+        IconButton(onClick = onRemove, modifier = Modifier.size(32.dp)) {
+            Icon(Icons.Default.Close, null, tint = OnSurfaceVariant, modifier = Modifier.size(18.dp))
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AddMealPlanDialog(
+    recipes: List<Recipe>,
+    onAdd: (MealPlanEntry) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var selectedDate by remember { mutableStateOf(todayDateStr()) }
+    var selectedMealType by remember { mutableStateOf(MealType.DINNER) }
+    var selectedRecipe by remember { mutableStateOf(recipes.firstOrNull()) }
+    var recipeExpanded by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add to Meal Plan") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = selectedDate,
+                    onValueChange = { selectedDate = it },
+                    label = { Text("Date (dd/MM/yyyy)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    MealType.entries.forEach { type ->
+                        FilterChip(
+                            type.emoji,
+                            selected = selectedMealType == type,
+                            onClick = { selectedMealType = type }
+                        )
+                    }
+                }
+                ExposedDropdownMenuBox(expanded = recipeExpanded, onExpandedChange = { recipeExpanded = it }) {
+                    OutlinedTextField(
+                        value = selectedRecipe?.name ?: "Select recipe",
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Recipe") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(recipeExpanded) },
+                        modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable, true)
+                    )
+                    ExposedDropdownMenu(expanded = recipeExpanded, onDismissRequest = { recipeExpanded = false }) {
+                        recipes.forEach { recipe ->
+                            DropdownMenuItem(
+                                text = { Text(recipe.name) },
+                                onClick = { selectedRecipe = recipe; recipeExpanded = false }
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val r = selectedRecipe ?: return@Button
+                    onAdd(MealPlanEntry(date = selectedDate, mealType = selectedMealType.name, recipeId = r.id, recipeName = r.name))
+                },
+                enabled = selectedRecipe != null,
+                colors = ButtonDefaults.buttonColors(containerColor = Primary)
+            ) { Text("Add") }
+        },
+        dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+// ── Prepared Tab ──────────────────────────────────────────────────────────────
+
+@Composable
+private fun PreparedTab(meals: List<PreparedMeal>, onDelete: (String) -> Unit) {
+    if (meals.isEmpty()) {
+        EmptyState(
+            icon = { Icon(Icons.Outlined.Restaurant, null, Modifier.size(36.dp), tint = OnSurfaceVariant) },
+            title = "No Meals Cooked Yet",
+            subtitle = "When you cook a recipe, it appears here",
+            modifier = Modifier.fillMaxSize()
+        )
+    } else {
+        LazyColumn(contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            items(meals, key = { it.id }) { meal ->
+                PreparedMealCard(meal = meal, onDelete = { onDelete(meal.id) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun PreparedMealCard(meal: PreparedMeal, onDelete: () -> Unit) {
+    GlassCard(Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(meal.recipeName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(meal.date, style = MaterialTheme.typography.bodySmall, color = OnSurfaceVariant)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("${meal.nutritionConsumed.calories.toInt()} kcal", style = MaterialTheme.typography.labelSmall, color = Primary, fontWeight = FontWeight.SemiBold)
+                    Text("${meal.nutritionConsumed.protein.toInt()}g protein", style = MaterialTheme.typography.labelSmall, color = Tertiary)
+                }
+            }
+            IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+                Icon(Icons.Default.Close, null, tint = OnSurfaceVariant, modifier = Modifier.size(18.dp))
+            }
+        }
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun RecipeCardPreview() {
+    VitalityFluxTheme {
+        Column(Modifier.fillMaxSize().background(Surface).padding(20.dp)) {
+            sampleRecipes.take(2).forEach { recipe ->
+                RecipeCard(recipe = recipe, canMake = true, onClick = {}, onEdit = {}, onDelete = {}, onCookNow = {})
+                Spacer(Modifier.height(12.dp))
+            }
+        }
+    }
+}
