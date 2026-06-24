@@ -54,6 +54,7 @@ data class NutritionUiState(
     /** Top 3 inventory items per nutrient for suggestions */
     fun topItemsForNutrient(selector: (NutritionInfo) -> Double): List<Pair<GroceryItem, Double>> =
         inventoryItems
+            .asSequence()
             .filter { it.amount > 0 }
             .map { item ->
                 val per100 = selector(item.nutrition)
@@ -67,6 +68,7 @@ data class NutritionUiState(
             .filter { it.second > 0 }
             .sortedByDescending { it.second }
             .take(3)
+            .toList()
 
     private fun isWithinDays(dateStr: String, days: Int): Boolean {
         return try {

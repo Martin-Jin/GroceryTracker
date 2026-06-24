@@ -1,25 +1,71 @@
 package com.martin.storage.ui.nutrition
 
-import androidx.compose.foundation.*
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.*
-import androidx.compose.foundation.shape.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.*
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.TipsAndUpdates
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.*
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.martin.storage.data.model.*
+import com.martin.storage.data.model.GroceryItem
+import com.martin.storage.data.model.NutritionInfo
+import com.martin.storage.data.model.PreparedMeal
+import com.martin.storage.data.model.UserSettings
+import com.martin.storage.data.model.sampleGroceryItems
 import com.martin.storage.data.repository.AppRepository
-import com.martin.storage.ui.components.*
-import com.martin.storage.ui.theme.*
+import com.martin.storage.ui.components.CircularProgress
+import com.martin.storage.ui.components.FilterChip
+import com.martin.storage.ui.components.GlassCard
+import com.martin.storage.ui.components.NutrientBar
+import com.martin.storage.ui.components.NutrientChip
+import com.martin.storage.ui.components.SectionHeader
+import com.martin.storage.ui.components.roundedTo1
+import com.martin.storage.ui.theme.Error
+import com.martin.storage.ui.theme.OnPrimaryContainer
+import com.martin.storage.ui.theme.OnSurface
+import com.martin.storage.ui.theme.OnSurfaceVariant
+import com.martin.storage.ui.theme.Primary
+import com.martin.storage.ui.theme.PrimaryContainer
+import com.martin.storage.ui.theme.Secondary
+import com.martin.storage.ui.theme.Surface
+import com.martin.storage.ui.theme.SurfaceContainerHighest
+import com.martin.storage.ui.theme.SurfaceContainerLowest
+import com.martin.storage.ui.theme.Tertiary
+import com.martin.storage.ui.theme.TertiaryContainer
+import com.martin.storage.ui.theme.VitalityFluxTheme
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -53,7 +99,7 @@ fun NutritionScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     NutritionPeriod.entries.forEach { period ->
-                        FilterChip(period.label, state.selectedPeriod == period) { viewModel.setPeriod(period) }
+                        FilterChip(period.label, state.selectedPeriod == period, onClick = { viewModel.setPeriod(period) })
                     }
                 }
             }
@@ -314,7 +360,7 @@ private fun NutritionPreview() {
         val sampleState = NutritionUiState(
             settings = UserSettings(),
             preparedMeals = listOf(
-                PreparedMeal(date = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault()).format(java.util.Date()),
+                PreparedMeal(date = java.text.SimpleDateFormat("dd/MM/yyyy", LocalLocale.current.platformLocale).format(java.util.Date()),
                     recipeId = "1", recipeName = "Chicken Stir Fry", servings = 1.0,
                     nutritionConsumed = NutritionInfo(480.0, 44.0, 55.0, 8.5, 5.0, 4.0, 48.0, 3.2, 88.0, 0.5, 520.0, 62.0, 2.7))
             ),

@@ -3,16 +3,13 @@ package com.martin.storage.data.repository
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
-import android.os.Build
-import androidx.compose.ui.unit.Constraints
 import androidx.core.app.NotificationCompat
 import androidx.work.*
 import com.martin.storage.data.DataKeys
-import com.martin.storage.data.appJson
 import com.martin.storage.data.appDataStore
+import com.martin.storage.data.appJson
 import com.martin.storage.data.model.GroceryItem
 import kotlinx.coroutines.flow.first
-import kotlinx.serialization.decodeFromString
 import java.util.concurrent.TimeUnit
 
 private const val CHANNEL_STOCK  = "low_stock"
@@ -37,7 +34,6 @@ fun scheduleGroceryChecks(context: Context) {
 }
 
 fun createNotificationChannels(context: Context) {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
     val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     nm.createNotificationChannel(
         NotificationChannel(CHANNEL_STOCK, "Low Stock Alerts", NotificationManager.IMPORTANCE_DEFAULT)

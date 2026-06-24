@@ -1,12 +1,18 @@
 package com.martin.storage.ui.navigation
 
-import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.navigation.*
-import androidx.navigation.compose.*
+import androidx.navigation.NavHostController
+import androidx.navigation.NavType
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.martin.storage.data.repository.AppRepository
 import com.martin.storage.ui.inventory.InventoryScreen
 import com.martin.storage.ui.meals.MealsScreen

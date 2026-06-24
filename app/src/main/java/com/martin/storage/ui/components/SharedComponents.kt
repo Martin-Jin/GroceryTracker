@@ -1,23 +1,74 @@
 package com.martin.storage.ui.components
 
-import androidx.compose.animation.*
-import androidx.compose.animation.core.*
-import androidx.compose.foundation.*
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.*
+import androidx.compose.animation.core.EaseOutCubic
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.*
-import androidx.compose.ui.draw.*
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.*
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.*
-import com.martin.storage.ui.theme.*
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import com.martin.storage.ui.theme.Error
+import com.martin.storage.ui.theme.ErrorContainer
+import com.martin.storage.ui.theme.InverseOnSurface
+import com.martin.storage.ui.theme.InverseSurface
+import com.martin.storage.ui.theme.OnErrorContainer
+import com.martin.storage.ui.theme.OnPrimary
+import com.martin.storage.ui.theme.OnPrimaryContainer
+import com.martin.storage.ui.theme.OnSurface
+import com.martin.storage.ui.theme.OnSurfaceVariant
+import com.martin.storage.ui.theme.Primary
+import com.martin.storage.ui.theme.PrimaryContainer
+import com.martin.storage.ui.theme.Secondary
+import com.martin.storage.ui.theme.SecondaryContainer
+import com.martin.storage.ui.theme.Surface
+import com.martin.storage.ui.theme.SurfaceContainerHigh
+import com.martin.storage.ui.theme.SurfaceContainerHighest
+import com.martin.storage.ui.theme.Tertiary
+import com.martin.storage.ui.theme.TertiaryContainer
 import kotlin.math.roundToInt
 
 // ── Glass Card ─────────────────────────────────────────────────────────────────
@@ -268,7 +319,7 @@ fun VitalityTopBar(
         navigationIcon = {
             if (onNavigateUp != null) {
                 IconButton(onClick = onNavigateUp) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Primary)
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Primary)
                 }
             }
         },

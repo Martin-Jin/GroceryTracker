@@ -2,8 +2,9 @@ package com.martin.storage
 
 import android.app.Application
 
-class GroceryApp : Application() {
-    override fun onCreate() {
-        super.onCreate()
-    }
-}
+/**
+ * Custom Application class.
+ * WorkManager self-initialises via Jetpack App Startup; no manual init required.
+ * Add any global SDK initialisation here if needed in future.
+ */
+class GroceryApp : Application()

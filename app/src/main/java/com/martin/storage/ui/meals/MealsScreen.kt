@@ -1,32 +1,112 @@
 package com.martin.storage.ui.meals
 
-import androidx.compose.animation.*
-import androidx.compose.foundation.*
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.*
-import androidx.compose.foundation.pager.*
-import androidx.compose.foundation.shape.*
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.*
-import androidx.compose.material3.*
+import androidx.compose.material.icons.automirrored.outlined.MenuBook
+import androidx.compose.material.icons.automirrored.outlined.Undo
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.outlined.DateRange
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Restaurant
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
-import androidx.compose.runtime.*
-import androidx.compose.ui.*
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.*
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.martin.storage.data.model.*
+import com.martin.storage.data.model.MealPlanEntry
+import com.martin.storage.data.model.MealType
+import com.martin.storage.data.model.PreparedMeal
+import com.martin.storage.data.model.Recipe
+import com.martin.storage.data.model.sampleRecipes
+import com.martin.storage.data.model.todayDateStr
 import com.martin.storage.data.repository.AppRepository
-import com.martin.storage.ui.components.*
-import com.martin.storage.ui.theme.*
+import com.martin.storage.ui.components.EmptyState
+import com.martin.storage.ui.components.FilterChip
+import com.martin.storage.ui.components.GlassCard
+import com.martin.storage.ui.components.NutrientChip
+import com.martin.storage.ui.components.UndoSnackbarHost
+import com.martin.storage.ui.theme.Error
+import com.martin.storage.ui.theme.OnPrimary
+import com.martin.storage.ui.theme.OnSurfaceVariant
+import com.martin.storage.ui.theme.OutlineVariant
+import com.martin.storage.ui.theme.Primary
+import com.martin.storage.ui.theme.PrimaryContainer
+import com.martin.storage.ui.theme.Secondary
+import com.martin.storage.ui.theme.SecondaryContainer
+import com.martin.storage.ui.theme.Surface
+import com.martin.storage.ui.theme.SurfaceContainerLowest
+import com.martin.storage.ui.theme.Tertiary
+import com.martin.storage.ui.theme.TertiaryContainer
+import com.martin.storage.ui.theme.VitalityFluxTheme
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
-import java.util.*
 
 private val tabTitles = listOf("Recipes", "Meal Plan", "Prepared")
 
@@ -63,7 +143,7 @@ fun MealsScreen(
                             if (pagerState.currentPage == 0) viewModel.undoRecipes()
                             else viewModel.undoMealPlan()
                         }) {
-                            Icon(Icons.Outlined.Undo, "Undo", tint = Primary)
+                            Icon(Icons.AutoMirrored.Outlined.Undo, "Undo", tint = Primary)
                         }
                     }
                 }
@@ -115,7 +195,7 @@ fun MealsScreen(
                     onDeleteRecipe = { id ->
                         viewModel.deleteRecipe(id)
                         scope.launch {
-                            val r = snackbar.showSnackbar("Recipe deleted", "Undo", SnackbarDuration.Short)
+                            val r = snackbar.showSnackbar("Recipe deleted", "Undo", duration = SnackbarDuration.Short)
                             if (r == SnackbarResult.ActionPerformed) viewModel.undoRecipes()
                         }
                     },
@@ -132,7 +212,7 @@ fun MealsScreen(
                     onRemoveEntry = { id ->
                         viewModel.removeMealPlanEntry(id)
                         scope.launch {
-                            val r = snackbar.showSnackbar("Entry removed", "Undo", SnackbarDuration.Short)
+                            val r = snackbar.showSnackbar("Entry removed", "Undo", duration = SnackbarDuration.Short)
                             if (r == SnackbarResult.ActionPerformed) viewModel.undoMealPlan()
                         }
                     },
@@ -192,7 +272,7 @@ private fun RecipesTab(
 
         if (state.filteredRecipes.isEmpty()) {
             EmptyState(
-                icon = { Icon(Icons.Outlined.MenuBook, null, Modifier.size(36.dp), tint = OnSurfaceVariant) },
+                icon = { Icon(Icons.AutoMirrored.Outlined.MenuBook, null, Modifier.size(36.dp), tint = OnSurfaceVariant) },
                 title = "No Recipes",
                 subtitle = "Add recipes to plan your meals",
                 modifier = Modifier.fillMaxSize()
@@ -353,10 +433,8 @@ private fun MealPlanTab(
             LazyColumn(contentPadding = PaddingValues(horizontal = 20.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 state.weekPlanByDay.forEach { (date, entries) ->
                     item(key = "header_$date") {
-                        val formatted = try {
-                            val d = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).parse(date)
-                            SimpleDateFormat("EEEE, d MMM", Locale.getDefault()).format(d!!)
-                        } catch (_: Exception) { date }
+                        val d = SimpleDateFormat("dd/MM/yyyy", LocalLocale.current.platformLocale).parse(date)
+                        val formatted = SimpleDateFormat("EEEE, d MMM", LocalLocale.current.platformLocale).format(d!!)
                         Text(formatted, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = OnSurfaceVariant,
                             modifier = Modifier.padding(top = 8.dp))
                     }
@@ -446,7 +524,7 @@ private fun AddMealPlanDialog(
                         readOnly = true,
                         label = { Text("Recipe") },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(recipeExpanded) },
-                        modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable, true)
+                        modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, true)
                     )
                     ExposedDropdownMenu(expanded = recipeExpanded, onDismissRequest = { recipeExpanded = false }) {
                         recipes.forEach { recipe ->

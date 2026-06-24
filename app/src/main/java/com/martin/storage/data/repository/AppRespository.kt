@@ -166,7 +166,7 @@ class AppRepository(private val context: Context) {
                         recipeName = recipe.name,
                         servings   = 1
                     )
-                    weeklyNutrition = weeklyNutrition + recipe.nutritionPerServing
+                    weeklyNutrition += recipe.nutritionPerServing
                     deductSim(recipe, simItems, 1.0)
                 }
             }

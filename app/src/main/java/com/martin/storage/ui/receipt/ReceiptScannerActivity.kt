@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -207,7 +208,7 @@ private fun ReceiptSelectionScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Back", tint = Primary) }
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Primary) }
                     Text("Select Items to Add", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Primary, modifier = Modifier.weight(1f))
                     NutrientChip(
                         "${mutableItems.count { it.selected }} selected",
