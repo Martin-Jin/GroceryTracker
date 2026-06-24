@@ -14,10 +14,22 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -28,6 +40,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,6 +56,7 @@ import androidx.navigation.compose.rememberNavController
 import com.martin.storage.data.repository.AppRepository
 import com.martin.storage.data.repository.scheduleGroceryChecks
 import com.martin.storage.ui.navigation.AppNavGraph
+import com.martin.storage.ui.navigation.BottomNavItem
 import com.martin.storage.ui.navigation.Screen
 import com.martin.storage.ui.navigation.bottomNavItems
 import com.martin.storage.ui.theme.Background
@@ -50,6 +64,7 @@ import com.martin.storage.ui.theme.OnSurfaceVariant
 import com.martin.storage.ui.theme.Primary
 import com.martin.storage.ui.theme.PrimaryContainer
 import com.martin.storage.ui.theme.Surface
+import com.martin.storage.ui.theme.SurfaceVariant
 import com.martin.storage.ui.theme.VitalityFluxTheme
 import kotlinx.coroutines.launch
 
@@ -100,6 +115,10 @@ fun GroceryApp(repository: AppRepository) {
 
 // ── Bottom Navigation Bar ─────────────────────────────────────────────────────
 
+// Language: Kotlin
+// Title: Custom Animated Bottom Navigation Bar
+// Instructions: Replace your entire AppBottomNavigation function with this code. You will also need to add standard Compose imports for Row, Column, etc., if not already present.
+
 @Composable
 private fun AppBottomNavigation(navController: NavHostController) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -115,66 +134,177 @@ private fun AppBottomNavigation(navController: NavHostController) {
         enter   = slideInVertically(tween(200)) { it } + fadeIn(tween(200)),
         exit    = slideOutVertically(tween(150)) { it } + fadeOut(tween(150))
     ) {
-        NavigationBar(
-            modifier       = Modifier.height(72.dp),
-            containerColor = Surface.copy(alpha = 0.97f),
+        // A standard Surface doesn't enforce the strict internal clipping of NavigationBar
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = SurfaceVariant.copy(alpha = 0.3f),
             tonalElevation = 0.dp
         ) {
-            bottomNavItems.forEach { item ->
-                val selected = currentDestination?.hierarchy?.any { it.route == item.screen.route } == true
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    // Crucial: Because we enabled EdgeToEdge, we must manually apply
+                    // the navigation bar insets so the UI isn't drawn under system gestures.
+                    .windowInsetsPadding(WindowInsets.navigationBars)
+                    // Add ample vertical padding so your large emojis have room to breathe
+                    .padding(top = 10.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                bottomNavItems.forEach { item ->
+                    val selected = currentDestination?.hierarchy?.any { it.route == item.screen.route } == true
 
-                NavigationBarItem(
-                    selected = selected,
-                    onClick  = {
-                        navController.navigate(item.screen.route) {
-                            // Pop to start to avoid building up a back stack of bottom-nav destinations.
-                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                            launchSingleTop = true
-                            restoreState    = true
-                        }
-                    },
-                    icon = {
-                        AnimatedContent(
-                            targetState = selected,
-                            transitionSpec = {
-                                scaleIn(tween(150)) + fadeIn(tween(150)) togetherWith
-                                        scaleOut(tween(100)) + fadeOut(tween(100))
-                            },
-                            label = "navIcon"
-                        ) { isSelected ->
-                            if (isSelected) {
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(50.dp))
-                                        .padding(horizontal = 12.dp, vertical = 2.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(item.emoji, style = MaterialTheme.typography.titleLarge)
-                                }
-                            } else {
-                                Text(item.emoji, style = MaterialTheme.typography.titleMedium)
+                    CustomNavItem(
+                        item = item,
+                        selected = selected,
+                        onClick = {
+                            navController.navigate(item.screen.route) {
+                                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                                launchSingleTop = true
+                                restoreState    = true
                             }
                         }
-                    },
-                    label = {
-                        Text(
-                            text       = item.label,
-                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                            style      = MaterialTheme.typography.labelSmall
-                        )
-                    },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor   = Primary,
-                        selectedTextColor   = Primary,
-                        unselectedIconColor = OnSurfaceVariant,
-                        unselectedTextColor = OnSurfaceVariant,
-                        indicatorColor      = PrimaryContainer.copy(alpha = 0.3f)
                     )
-                )
+                }
             }
         }
     }
 }
+
+// Language: Kotlin
+// Title: Custom Navigation Item Component
+// Instructions: Place this private composable directly below your new AppBottomNavigation function in the same file.
+
+@Composable
+private fun CustomNavItem(
+    item: BottomNavItem, // Update this type if your data class is named differently
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            // Makes the entire column clickable without the default M3 ripple
+            // interfering with your custom scale animation.
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick
+            )
+            .padding(horizontal = 10.dp), // Safe touch-target padding
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        // The Emoji Icon with animated scale and pill background
+        AnimatedContent(
+            targetState = selected,
+            transitionSpec = {
+                scaleIn(tween(150)) + fadeIn(tween(150)) togetherWith
+                        scaleOut(tween(100)) + fadeOut(tween(100))
+            },
+            label = "navIcon"
+        ) { isSelected ->
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50.dp))
+                    // Apply the pill background directly here
+                    .background(if (isSelected) PrimaryContainer.copy(alpha = 0.3f) else androidx.compose.ui.graphics.Color.Transparent)
+                    .padding(horizontal = 16.dp, vertical = 6.dp), // Safely pads the emoji inside the pill
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = item.emoji,
+                    style = if (isSelected) MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleMedium
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        // The Text Label
+        Text(
+            text = item.label,
+            color = if (selected) Primary else OnSurfaceVariant,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            style = MaterialTheme.typography.labelSmall
+        )
+    }
+}
+
+//@Composable
+//private fun AppBottomNavigation(navController: NavHostController) {
+//    val navBackStackEntry by navController.currentBackStackEntryAsState()
+//    val currentDestination = navBackStackEntry?.destination
+//
+//    // Hide the bottom bar on screens that are full-screen overlays.
+//    val hideBarRoutes = setOf(Screen.Settings.route, Screen.RecipeDetail.route, Screen.RecipeEdit.route)
+//    val currentRoute  = currentDestination?.route ?: ""
+//    val showBar       = hideBarRoutes.none { currentRoute.startsWith(it.substringBefore("{")) }
+//
+//    AnimatedVisibility(
+//        visible = showBar,
+//        enter   = slideInVertically(tween(200)) { it } + fadeIn(tween(200)),
+//        exit    = slideOutVertically(tween(150)) { it } + fadeOut(tween(150))
+//    ) {
+//        NavigationBar(
+//            modifier       = Modifier.height(70.dp),
+//            containerColor = SurfaceVariant,
+//            tonalElevation = 0.dp
+//        ) {
+//            bottomNavItems.forEach { item ->
+//                val selected = currentDestination?.hierarchy?.any { it.route == item.screen.route } == true
+//
+//                NavigationBarItem(
+//                    selected = selected,
+//                    onClick  = {
+//                        navController.navigate(item.screen.route) {
+//                            // Pop to start to avoid building up a back stack of bottom-nav destinations.
+//                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+//                            launchSingleTop = true
+//                            restoreState    = true
+//                        }
+//                    },
+//                    icon = {
+//                        AnimatedContent(
+//                            targetState = selected,
+//                            transitionSpec = {
+//                                scaleIn(tween(150)) + fadeIn(tween(150)) togetherWith
+//                                        scaleOut(tween(100)) + fadeOut(tween(100))
+//                            },
+//                            label = "navIcon"
+//                        ) { isSelected ->
+//                            if (isSelected) {
+//                                Box(
+//                                    modifier = Modifier
+//                                        .clip(RoundedCornerShape(50.dp))
+//                                        .padding(horizontal = 12.dp, vertical = 2.dp),
+//                                    contentAlignment = Alignment.Center
+//                                ) {
+//                                    Text(item.emoji, style = MaterialTheme.typography.titleLarge)
+//                                }
+//                            } else {
+//                                Text(item.emoji, style = MaterialTheme.typography.titleMedium)
+//                            }
+//                        }
+//                    },
+//                    label = {
+//                        Text(
+//                            text       = item.label,
+//                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+//                            style      = MaterialTheme.typography.labelSmall
+//                        )
+//                    },
+//                    colors = NavigationBarItemDefaults.colors(
+//                        selectedIconColor   = Primary,
+//                        selectedTextColor   = Primary,
+//                        unselectedIconColor = OnSurfaceVariant,
+//                        unselectedTextColor = OnSurfaceVariant,
+//                        indicatorColor      = PrimaryContainer.copy(alpha = 0.3f)
+//                    )
+//                )
+//            }
+//        }
+//    }
+//}
 
 // ── Previews ──────────────────────────────────────────────────────────────────
 
@@ -184,7 +314,7 @@ private fun BottomNavPreview() {
     VitalityFluxTheme {
         Surface(color = Surface) {
             NavigationBar(
-                modifier       = Modifier.height(72.dp),
+                Modifier.offset(y = 6.dp),
                 containerColor = Surface.copy(alpha = 0.97f),
                 tonalElevation = 0.dp
             ) {

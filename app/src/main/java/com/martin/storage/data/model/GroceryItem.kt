@@ -17,7 +17,8 @@ data class GroceryItem(
     val addedDate: String = todayDateStr(),
     val nutrition: NutritionInfo = NutritionInfo(),
     val notes: String = "",
-    val imageUri: String = ""
+    val imageUri: String = "",
+    val portionSize: Double = 1.0,
 ) {
     val isLowStock: Boolean
         get() = amount in 0.0001..lowStockThreshold

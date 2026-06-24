@@ -1,7 +1,17 @@
 package com.martin.storage.ui.inventory
 
+import android.Manifest
+import android.app.Activity
+import android.content.Intent
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -18,6 +28,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -27,26 +38,25 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Redo
 import androidx.compose.material.icons.automirrored.outlined.Undo
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Camera
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FilterList
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -60,6 +70,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
@@ -75,10 +86,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import com.martin.storage.data.model.FoodNutritionDatabase
 import com.martin.storage.data.model.GroceryItem
 import com.martin.storage.data.model.NutritionInfo
@@ -95,6 +112,8 @@ import com.martin.storage.ui.components.NutrientChip
 import com.martin.storage.ui.components.QuantityStepper
 import com.martin.storage.ui.components.StockIndicator
 import com.martin.storage.ui.components.UndoSnackbarHost
+import com.martin.storage.ui.receipt.EXTRA_RECEIPT_ITEMS
+import com.martin.storage.ui.receipt.ReceiptScannerActivity
 import com.martin.storage.ui.theme.Error
 import com.martin.storage.ui.theme.ErrorContainer
 import com.martin.storage.ui.theme.OnPrimary
@@ -124,6 +143,38 @@ fun InventoryScreen(
     var showAddSheet by remember { mutableStateOf(false) }
     var editingItem by remember { mutableStateOf<GroceryItem?>(null) }
     var showSortSheet by remember { mutableStateOf(false) }
+
+    val context = LocalContext.current
+
+    val receiptLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val json = result.data?.getStringExtra(EXTRA_RECEIPT_ITEMS) ?: return@rememberLauncherForActivityResult
+            try {
+                val names: List<String> = Gson().fromJson(json, object : TypeToken<List<String>>() {}.type)
+                names.forEach { name ->
+                    val trimmed = name.trim().replaceFirstChar { it.uppercase() }
+                    val nutrition = FoodNutritionDatabase.findBestMatch(trimmed) ?: NutritionInfo()
+                    viewModel.upsertItem(GroceryItem(name = trimmed, nutrition = nutrition))
+                }
+            } catch (_: Exception) { }
+        }
+    }
+
+    val cameraPermLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) receiptLauncher.launch(Intent(context, ReceiptScannerActivity::class.java))
+    }
+
+    fun launchReceiptScanner() {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+            receiptLauncher.launch(Intent(context, ReceiptScannerActivity::class.java))
+        } else {
+            cameraPermLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -189,12 +240,9 @@ fun InventoryScreen(
             }
         },
         floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = { showAddSheet = true },
-                containerColor = Primary,
-                contentColor = OnPrimary,
-                icon = { Icon(Icons.Default.Add, "Add item") },
-                text = { Text("Add Item") }
+            InventoryFab(
+                onAddItem     = { showAddSheet = true },
+                onScanReceipt = { launchReceiptScanner() }
             )
         },
         snackbarHost = { UndoSnackbarHost(snackbarHostState) }
@@ -230,8 +278,8 @@ fun InventoryScreen(
                                 if (result == SnackbarResult.ActionPerformed) viewModel.undo()
                             }
                         },
-                        onIncrease = { viewModel.adjustAmount(item.id, stepFor(item.unit)) },
-                        onDecrease = { viewModel.adjustAmount(item.id, -stepFor(item.unit)) }
+                        onIncrease = { viewModel.adjustAmount(item.id, item.portionSize) },
+                        onDecrease = { viewModel.adjustAmount(item.id, -item.portionSize) }
                     )
                 }
                 item { Spacer(Modifier.height(80.dp)) }
@@ -243,6 +291,15 @@ fun InventoryScreen(
         GroceryItemSheet(
             item = editingItem,
             onSave = { viewModel.upsertItem(it); showAddSheet = false; editingItem = null },
+            onDelete = { item ->
+                viewModel.deleteItem(item.id)
+                scope.launch {
+                    val result = snackbarHostState.showSnackbar("${item.name} deleted", "Undo", duration = SnackbarDuration.Short)
+                    if (result == SnackbarResult.ActionPerformed) viewModel.undo()
+                }
+                showAddSheet = false
+                editingItem = null
+            },
             onDismiss = { showAddSheet = false; editingItem = null }
         )
     }
@@ -253,12 +310,6 @@ fun InventoryScreen(
             onDismiss = { showSortSheet = false }
         )
     }
-}
-
-private fun stepFor(unit: String): Double = when (unit.lowercase()) {
-    "kg", "l", "lbs" -> 0.1
-    "g", "ml", "oz"  -> 50.0
-    else              -> 1.0
 }
 
 // ── Search Bar ────────────────────────────────────────────────────────────────
@@ -353,7 +404,7 @@ private fun FilterRow(
 
 // ── Grocery List Item ─────────────────────────────────────────────────────────
 
-@OptIn(ExperimentalFoundationApi::class)
+// Find the entire GroceryListItem function and replace with:
 @Composable
 private fun GroceryListItem(
     item: GroceryItem,
@@ -362,8 +413,6 @@ private fun GroceryListItem(
     onIncrease: () -> Unit,
     onDecrease: () -> Unit
 ) {
-    var showMenu by remember { mutableStateOf(false) }
-
     GlassCard(
         modifier = Modifier.fillMaxWidth(),
         onClick = onEdit
@@ -371,16 +420,24 @@ private fun GroceryListItem(
         Row(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // Status dot
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                StockIndicator(item.isLowStock, item.isOutOfStock)
-            }
-            // Content
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(item.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            StockIndicator(item.isLowStock, item.isOutOfStock)
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                Text(
+                    item.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(
                         item.category,
                         style = MaterialTheme.typography.labelSmall,
@@ -391,42 +448,34 @@ private fun GroceryListItem(
                     }
                 }
                 if (item.tags.isNotEmpty()) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        item.tags.take(3).forEach { tag ->
-                            NutrientChip(tag, color = TertiaryContainer.copy(.25f), textColor = Tertiary)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        item.tags.forEach { tag ->
+                            NutrientChip(
+                                tag,
+                                color = TertiaryContainer.copy(.25f),
+                                textColor = Tertiary,
+                                modifier = Modifier.widthIn(max = 90.dp)
+                            )
                         }
                     }
                 }
             }
-            // Stepper
+
             QuantityStepper(
                 value = item.amount,
                 unit = item.unit,
                 onIncrease = onIncrease,
                 onDecrease = onDecrease
             )
-            // Menu
-            Box {
-                IconButton(onClick = { showMenu = true }, modifier = Modifier.size(32.dp)) {
-                    Icon(Icons.Default.MoreVert, null, tint = OnSurfaceVariant, modifier = Modifier.size(18.dp))
-                }
-                DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                    DropdownMenuItem(
-                        text = { Text("Edit") },
-                        leadingIcon = { Icon(Icons.Outlined.Edit, null) },
-                        onClick = { showMenu = false; onEdit() }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Delete", color = Error) },
-                        leadingIcon = { Icon(Icons.Outlined.Delete, null, tint = Error) },
-                        onClick = { showMenu = false; onDelete() }
-                    )
-                }
-            }
         }
     }
 }
-
 // ── Sort Bottom Sheet ─────────────────────────────────────────────────────────
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -462,6 +511,7 @@ private fun SortBottomSheet(
 fun GroceryItemSheet(
     item: GroceryItem?,
     onSave: (GroceryItem) -> Unit,
+    onDelete: ((GroceryItem) -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     var name by remember(item) { mutableStateOf(item?.name ?: "") }
@@ -471,6 +521,7 @@ fun GroceryItemSheet(
     var tagsRaw by remember(item) { mutableStateOf(item?.tags?.joinToString(", ") ?: "") }
     var expiryDate by remember(item) { mutableStateOf(item?.expiryDate ?: "") }
     var threshold by remember(item) { mutableStateOf(item?.lowStockThreshold?.toString() ?: "1") }
+    var portionSize by remember(item) { mutableStateOf(item?.portionSize?.toString() ?: "1") }
     var notes by remember(item) { mutableStateOf(item?.notes ?: "") }
     var unitExpanded by remember { mutableStateOf(false) }
     var catExpanded by remember { mutableStateOf(false) }
@@ -586,6 +637,16 @@ fun GroceryItemSheet(
             )
 
             OutlinedTextField(
+                value = portionSize,
+                onValueChange = { portionSize = it },
+                label = { Text("Portion size (step per +/-)") },
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp)
+            )
+
+            OutlinedTextField(
                 value = notes,
                 onValueChange = { notes = it },
                 label = { Text("Notes") },
@@ -612,6 +673,7 @@ fun GroceryItemSheet(
                                 tags = tags,
                                 expiryDate = expiryDate.trim(),
                                 lowStockThreshold = threshold.toDoubleOrNull() ?: 1.0,
+                                portionSize = portionSize.toDoubleOrNull()?.coerceAtLeast(0.01) ?: 1.0,
                                 notes = notes.trim(),
                                 addedDate = item?.addedDate ?: todayDateStr(),
                                 nutrition = nutrition
@@ -623,6 +685,91 @@ fun GroceryItemSheet(
                     colors = ButtonDefaults.buttonColors(containerColor = Primary)
                 ) { Text("Save") }
             }
+            if (item != null && onDelete != null) {
+                Button(
+                    onClick = { onDelete(item) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Error)
+                ) {
+                    Icon(Icons.Outlined.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Text("  Delete Item")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InventoryFab(
+    onAddItem: () -> Unit,
+    onScanReceipt: () -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Column(
+        horizontalAlignment = Alignment.End,
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        AnimatedVisibility(
+            visible = expanded,
+            enter = fadeIn(tween(150)) + slideInVertically(tween(150)) { it },
+            exit  = fadeOut(tween(100)) + slideOutVertically(tween(100)) { it }
+        ) {
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                FabSubAction(label = "Scan Receipt", icon = Icons.Default.Camera) {
+                    expanded = false; onScanReceipt()
+                }
+                FabSubAction(label = "Add Item", icon = Icons.Default.Add) {
+                    expanded = false; onAddItem()
+                }
+            }
+        }
+
+        FloatingActionButton(
+            onClick        = { expanded = !expanded },
+            containerColor = Primary,
+            contentColor   = OnPrimary
+        ) {
+            Icon(
+                imageVector        = if (expanded) Icons.Default.Close else Icons.Default.Add,
+                contentDescription = null
+            )
+        }
+    }
+}
+
+@Composable
+private fun FabSubAction(
+    label: String,
+    icon: ImageVector,
+    onClick: () -> Unit
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.85f))
+                .padding(horizontal = 10.dp, vertical = 5.dp)
+        ) {
+            Text(
+                text  = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.inverseOnSurface,
+                maxLines = 1
+            )
+        }
+        SmallFloatingActionButton(
+            onClick        = onClick,
+            containerColor = Primary,
+            contentColor   = OnPrimary
+        ) {
+            Icon(icon, contentDescription = label, modifier = Modifier.size(20.dp))
         }
     }
 }

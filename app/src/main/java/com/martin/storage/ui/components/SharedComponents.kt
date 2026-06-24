@@ -49,6 +49,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.martin.storage.ui.theme.Error
@@ -78,13 +79,13 @@ fun GlassCard(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
     elevation: Dp = 2.dp,
-    shape: Shape = RoundedCornerShape(16.dp),
+    shape: Shape = RoundedCornerShape(14.dp),
     content: @Composable ColumnScope.() -> Unit
 ) {
     val baseModifier = modifier
         .shadow(elevation, shape, ambientColor = Primary.copy(alpha = 0.12f))
         .clip(shape)
-        .background(Color.White.copy(alpha = 0.85f))
+        .background(Color.White)
         .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
 
     Column(modifier = baseModifier, content = content)
@@ -109,7 +110,9 @@ fun NutrientChip(
             text = label.uppercase(),
             style = MaterialTheme.typography.labelSmall,
             color = textColor,
-            fontWeight = FontWeight.Bold
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }
@@ -332,6 +335,7 @@ fun VitalityTopBar(
 
 // ── Quantity Stepper ──────────────────────────────────────────────────────────
 
+// Find the entire QuantityStepper function and replace with:
 @Composable
 fun QuantityStepper(
     value: Double,
@@ -346,32 +350,32 @@ fun QuantityStepper(
             .background(SurfaceContainerHigh),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        IconButton(onClick = onDecrease, modifier = Modifier.size(36.dp)) {
+        IconButton(onClick = onDecrease, modifier = Modifier.size(30.dp)) {
             Icon(
                 Icons.Default.Remove,
                 contentDescription = "Decrease",
                 tint = Primary,
-                modifier = Modifier.size(16.dp)
+                modifier = Modifier.size(14.dp)
             )
         }
         Text(
             text = "${value.roundedTo1()} $unit",
-            style = MaterialTheme.typography.labelMedium,
+            style = MaterialTheme.typography.labelSmall,
             color = OnSurface,
-            modifier = Modifier.widthIn(min = 56.dp),
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            modifier = Modifier.widthIn(min = 44.dp),
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            maxLines = 1
         )
-        IconButton(onClick = onIncrease, modifier = Modifier.size(36.dp)) {
+        IconButton(onClick = onIncrease, modifier = Modifier.size(30.dp)) {
             Icon(
                 Icons.Default.Add,
                 contentDescription = "Increase",
                 tint = Primary,
-                modifier = Modifier.size(16.dp)
+                modifier = Modifier.size(14.dp)
             )
         }
     }
 }
-
 // ── Expiry Badge ──────────────────────────────────────────────────────────────
 
 @Composable
