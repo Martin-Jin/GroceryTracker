@@ -28,10 +28,8 @@ import androidx.compose.material.icons.automirrored.outlined.Undo
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.DateRange
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
@@ -53,7 +51,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
@@ -91,11 +88,11 @@ import com.martin.storage.ui.components.EmptyState
 import com.martin.storage.ui.components.FilterChip
 import com.martin.storage.ui.components.GlassCard
 import com.martin.storage.ui.components.NutrientChip
+import com.martin.storage.ui.components.TagAwareSearchBar
 import com.martin.storage.ui.components.UndoSnackbarHost
 import com.martin.storage.ui.theme.Error
 import com.martin.storage.ui.theme.OnPrimary
 import com.martin.storage.ui.theme.OnSurfaceVariant
-import com.martin.storage.ui.theme.OutlineVariant
 import com.martin.storage.ui.theme.Primary
 import com.martin.storage.ui.theme.PrimaryContainer
 import com.martin.storage.ui.theme.Secondary
@@ -205,6 +202,8 @@ fun MealsScreen(
                     },
                     onSearchChange = viewModel::setSearch,
                     onFilterMealType = viewModel::setMealTypeFilter,
+                    onTagApplied = viewModel::applyTagFilter,
+                    onTagRemoved = viewModel::removeTagFilter,
                     canMake = viewModel::canMakeRecipe
                 )
                 1 -> MealPlanTab(
@@ -241,22 +240,20 @@ private fun RecipesTab(
     onCookNow: (Recipe) -> Unit,
     onSearchChange: (String) -> Unit,
     onFilterMealType: (String?) -> Unit,
+    onTagApplied: (String) -> Unit,
+    onTagRemoved: (String) -> Unit,
     canMake: (Recipe) -> Boolean
 ) {
     Column(Modifier.fillMaxSize()) {
         // Search
-        OutlinedTextField(
-            value = state.searchQuery,
-            onValueChange = onSearchChange,
-            placeholder = { Text("Search recipes…") },
-            leadingIcon = { Icon(Icons.Default.Search, null, tint = OnSurfaceVariant) },
-            trailingIcon = {
-                if (state.searchQuery.isNotBlank())
-                    IconButton(onClick = { onSearchChange("") }) { Icon(Icons.Default.Clear, null) }
-            },
-            singleLine = true,
-            shape = RoundedCornerShape(14.dp),
-            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Primary, unfocusedBorderColor = OutlineVariant),
+        TagAwareSearchBar(
+            textQuery = state.searchQuery,
+            onTextQueryChange = onSearchChange,
+            appliedTagFilters = state.appliedTagFilters,
+            allAvailableTags = state.allRecipeTags,
+            onTagApplied = onTagApplied,
+            onTagRemoved = onTagRemoved,
+            placeholder = "Search recipes…",
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp)
         )
         // Meal type filter
@@ -409,7 +406,7 @@ private fun MealPlanTab(
                 } else {
                     Icon(Icons.Default.AutoAwesome, null, Modifier.size(16.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("Auto-Generate")
+                    Text("Generate")
                 }
             }
             OutlinedButton(

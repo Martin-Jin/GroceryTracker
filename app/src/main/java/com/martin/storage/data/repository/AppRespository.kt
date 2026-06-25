@@ -109,6 +109,18 @@ class AppRepository(private val context: Context) {
     suspend fun saveUserSettings(settings: UserSettings) =
         context.saveObject(DataKeys.USER_SETTINGS, settings)
 
+    suspend fun addCustomCategory(name: String) {
+        val settings = userSettings.firstOrNull() ?: UserSettings()
+        if (name.isNotBlank() && name !in settings.customCategories) {
+            saveUserSettings(settings.copy(customCategories = settings.customCategories + name))
+        }
+    }
+
+    suspend fun removeCustomCategory(name: String) {
+        val settings = userSettings.firstOrNull() ?: UserSettings()
+        saveUserSettings(settings.copy(customCategories = settings.customCategories.filter { it != name }))
+    }
+
     // ── Business logic ───────────────────────────────────────────────────────
 
     /** Items where amount ≤ threshold. */

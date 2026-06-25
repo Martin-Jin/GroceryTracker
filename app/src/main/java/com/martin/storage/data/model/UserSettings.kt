@@ -26,5 +26,6 @@ data class UserSettings(
     val autoGenerateShoppingList: Boolean     = true,
     val defaultLowStockThreshold: Double      = 1.0,
     // Preferences
-    val firstLaunchSeeded: Boolean            = false
+    val firstLaunchSeeded: Boolean            = false,
+    val customCategories: List<String>        = emptyList()
 )

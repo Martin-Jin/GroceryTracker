@@ -56,6 +56,5 @@ fun todayDateStr(): String =
     SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date())
 
 val groceryCategories = listOf(
-    "General", "Produce", "Dairy", "Meat & Seafood", "Bakery",
-    "Pantry", "Frozen", "Beverages", "Snacks", "Condiments", "Household"
+    "Vegetables"
 )

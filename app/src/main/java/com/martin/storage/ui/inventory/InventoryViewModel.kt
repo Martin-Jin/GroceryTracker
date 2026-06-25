@@ -10,20 +10,28 @@ data class InventoryUiState(
     val items: List<GroceryItem>        = emptyList(),
     val searchQuery: String             = "",
     val selectedCategory: String?       = null,
-    val selectedTags: Set<String>       = emptySet(),
+    val appliedTagFilters: Set<String>  = emptySet(),
     val sortOrder: SortOrder            = SortOrder.NAME_ASC,
     val isLoading: Boolean              = true,
     val showShoppingListOnly: Boolean   = false,
+    val customCategories: List<String>  = emptyList(),
     val canUndo: Boolean                = false,
     val canRedo: Boolean                = false
 ) {
+    val allCategories: List<String>
+        get() = groceryCategories + customCategories
+
     val filtered: List<GroceryItem>
         get() {
             var list = items
             if (showShoppingListOnly) list = list.filter { it.isLowStock || it.isOutOfStock }
-            if (!searchQuery.isBlank()) list = list.filter { it.name.contains(searchQuery, ignoreCase = true) }
+            if (searchQuery.isNotBlank()) list = list.filter { it.name.contains(searchQuery, ignoreCase = true) }
             if (selectedCategory != null) list = list.filter { it.category == selectedCategory }
-            if (selectedTags.isNotEmpty()) list = list.filter { item -> item.tags.any { it in selectedTags } }
+            if (appliedTagFilters.isNotEmpty()) list = list.filter { item ->
+                appliedTagFilters.all { filterTag ->
+                    item.tags.any { it.equals(filterTag, ignoreCase = true) }
+                }
+            }
             return when (sortOrder) {
                 SortOrder.NAME_ASC    -> list.sortedBy { it.name.lowercase() }
                 SortOrder.NAME_DESC   -> list.sortedByDescending { it.name.lowercase() }
@@ -58,8 +66,16 @@ class InventoryViewModel(private val repo: AppRepository) : ViewModel() {
 
     init {
         viewModelScope.launch {
-            repo.groceryItems.collect { items ->
-                _state.update { it.copy(items = items, isLoading = false) }
+            combine(repo.groceryItems, repo.userSettings) { items, settings ->
+                Pair(items, settings)
+            }.collect { (items, settings) ->
+                _state.update {
+                    it.copy(
+                        items = items,
+                        isLoading = false,
+                        customCategories = settings.customCategories
+                    )
+                }
             }
         }
     }
@@ -85,13 +101,21 @@ class InventoryViewModel(private val repo: AppRepository) : ViewModel() {
 
     fun setSearch(q: String)            = _state.update { it.copy(searchQuery = q) }
     fun setCategory(cat: String?)       = _state.update { it.copy(selectedCategory = cat) }
-    fun toggleTag(tag: String)          = _state.update {
-        val tags = if (tag in it.selectedTags) it.selectedTags - tag else it.selectedTags + tag
-        it.copy(selectedTags = tags)
+    fun clearFilters()                  = _state.update {
+        it.copy(searchQuery = "", selectedCategory = null, appliedTagFilters = emptySet(), showShoppingListOnly = false)
     }
-    fun clearFilters()                  = _state.update { it.copy(searchQuery = "", selectedCategory = null, selectedTags = emptySet(), showShoppingListOnly = false) }
     fun setSortOrder(order: SortOrder)  = _state.update { it.copy(sortOrder = order) }
     fun toggleShoppingListOnly()        = _state.update { it.copy(showShoppingListOnly = !it.showShoppingListOnly) }
+
+    // ── Tag filters ───────────────────────────────────────────────────────────
+
+    fun applyTagFilter(tag: String)  = _state.update { it.copy(appliedTagFilters = it.appliedTagFilters + tag) }
+    fun removeTagFilter(tag: String) = _state.update { it.copy(appliedTagFilters = it.appliedTagFilters - tag) }
+
+    // ── Category management ───────────────────────────────────────────────────
+
+    fun addCategory(name: String)          = viewModelScope.launch { repo.addCustomCategory(name) }
+    fun removeCustomCategory(name: String) = viewModelScope.launch { repo.removeCustomCategory(name) }
 
     // ── Undo / Redo ───────────────────────────────────────────────────────────
 

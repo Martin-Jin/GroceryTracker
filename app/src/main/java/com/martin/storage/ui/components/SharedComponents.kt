@@ -1,11 +1,17 @@
 package com.martin.storage.ui.components
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.EaseOutCubic
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -21,17 +27,25 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -39,7 +53,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -61,6 +79,7 @@ import com.martin.storage.ui.theme.OnPrimary
 import com.martin.storage.ui.theme.OnPrimaryContainer
 import com.martin.storage.ui.theme.OnSurface
 import com.martin.storage.ui.theme.OnSurfaceVariant
+import com.martin.storage.ui.theme.OutlineVariant
 import com.martin.storage.ui.theme.Primary
 import com.martin.storage.ui.theme.PrimaryContainer
 import com.martin.storage.ui.theme.Secondary
@@ -68,6 +87,7 @@ import com.martin.storage.ui.theme.SecondaryContainer
 import com.martin.storage.ui.theme.Surface
 import com.martin.storage.ui.theme.SurfaceContainerHigh
 import com.martin.storage.ui.theme.SurfaceContainerHighest
+import com.martin.storage.ui.theme.SurfaceContainerLowest
 import com.martin.storage.ui.theme.Tertiary
 import com.martin.storage.ui.theme.TertiaryContainer
 import kotlin.math.roundToInt
@@ -420,6 +440,171 @@ fun StockIndicator(isLow: Boolean, isOut: Boolean, modifier: Modifier = Modifier
                 .clip(CircleShape)
                 .background(Tertiary)
         )
+    }
+}
+
+// ── Tag-Aware Search Bar ──────────────────────────────────────────────────────
+
+@Composable
+fun TagAwareSearchBar(
+    textQuery: String,
+    onTextQueryChange: (String) -> Unit,
+    appliedTagFilters: Set<String>,
+    allAvailableTags: List<String>,
+    onTagApplied: (String) -> Unit,
+    onTagRemoved: (String) -> Unit,
+    placeholder: String = "Search…",
+    trailingContent: @Composable (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    var showSuggestions by remember { mutableStateOf(false) }
+
+    val suggestions = remember(textQuery, allAvailableTags, appliedTagFilters) {
+        if (textQuery.isBlank()) emptyList()
+        else allAvailableTags
+            .filter { it.contains(textQuery.trim(), ignoreCase = true) && it !in appliedTagFilters }
+            .sortedBy { it.lowercase().indexOf(textQuery.trim().lowercase()) }
+            .take(6)
+    }
+
+    LaunchedEffect(suggestions) {
+        showSuggestions = suggestions.isNotEmpty()
+    }
+
+    Column(modifier = modifier) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                OutlinedTextField(
+                    value = textQuery,
+                    onValueChange = {
+                        onTextQueryChange(it)
+                        if (it.isBlank()) showSuggestions = false
+                    },
+                    placeholder = { Text(placeholder, style = MaterialTheme.typography.bodyMedium) },
+                    leadingIcon = { Icon(Icons.Default.Search, null, tint = OnSurfaceVariant) },
+                    trailingIcon = {
+                        if (textQuery.isNotBlank()) {
+                            IconButton(onClick = { onTextQueryChange(""); showSuggestions = false }) {
+                                Icon(Icons.Default.Clear, null, tint = OnSurfaceVariant)
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Primary,
+                        unfocusedBorderColor = OutlineVariant,
+                        focusedContainerColor = SurfaceContainerLowest,
+                        unfocusedContainerColor = SurfaceContainerLowest
+                    ),
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    textStyle = MaterialTheme.typography.bodyMedium
+                )
+
+                // Autocomplete suggestions card – same width as the text field above
+                AnimatedVisibility(
+                    visible = showSuggestions,
+                    enter = expandVertically(tween(120)) + fadeIn(tween(120)),
+                    exit  = shrinkVertically(tween(80)) + fadeOut(tween(80))
+                ) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(bottomStart = 14.dp, bottomEnd = 14.dp),
+                        colors = CardDefaults.cardColors(containerColor = SurfaceContainerLowest),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                    ) {
+                        suggestions.forEach { tag ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        onTagApplied(tag)
+                                        onTextQueryChange("")
+                                        showSuggestions = false
+                                    }
+                                    .padding(horizontal = 16.dp, vertical = 11.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Text(
+                                    "#",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = Primary,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    tag,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = OnSurface
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            trailingContent?.invoke()
+        }
+
+        // Applied tag filter chips
+        if (appliedTagFilters.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(top = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Filters:",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = OnSurfaceVariant
+                )
+                appliedTagFilters.forEach { tag ->
+                    SearchTagChip(tag = tag, onRemove = { onTagRemoved(tag) })
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SearchTagChip(tag: String, onRemove: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(100.dp))
+            .background(Primary.copy(alpha = 0.12f))
+            .padding(start = 10.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Text(
+            text = tag,
+            style = MaterialTheme.typography.labelSmall,
+            color = Primary,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1
+        )
+        Box(
+            modifier = Modifier
+                .size(16.dp)
+                .clip(CircleShape)
+                .background(Primary.copy(alpha = 0.18f))
+                .clickable(onClick = onRemove),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                // We reuse the existing Close icon via import
+                imageVector = Icons.Default.Close,
+                contentDescription = "Remove $tag filter",
+                tint = Primary,
+                modifier = Modifier.size(10.dp)
+            )
+        }
     }
 }
 

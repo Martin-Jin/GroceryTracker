@@ -17,14 +17,23 @@ data class MealsUiState(
     val isGenerating: Boolean              = false,
     val searchQuery: String                = "",
     val selectedMealType: String?          = null,
+    val appliedTagFilters: Set<String>     = emptySet(),
     val canUndo: Boolean                   = false,
     val canRedo: Boolean                   = false
 ) {
+    val allRecipeTags: List<String>
+        get() = recipes.flatMap { it.tags }.distinct().sorted()
+
     val filteredRecipes: List<Recipe>
         get() {
             var list = recipes
             if (searchQuery.isNotBlank()) list = list.filter { it.name.contains(searchQuery, ignoreCase = true) }
             if (selectedMealType != null) list = list.filter { it.mealTypes.contains(selectedMealType) }
+            if (appliedTagFilters.isNotEmpty()) list = list.filter { recipe ->
+                appliedTagFilters.all { filterTag ->
+                    recipe.tags.any { it.equals(filterTag, ignoreCase = true) }
+                }
+            }
             return list.sortedBy { it.name }
         }
 
@@ -136,6 +145,8 @@ class MealsViewModel(private val repo: AppRepository) : ViewModel() {
 
     fun setSearch(q: String) = _state.update { it.copy(searchQuery = q) }
     fun setMealTypeFilter(type: String?) = _state.update { it.copy(selectedMealType = type) }
+    fun applyTagFilter(tag: String)  = _state.update { it.copy(appliedTagFilters = it.appliedTagFilters + tag) }
+    fun removeTagFilter(tag: String) = _state.update { it.copy(appliedTagFilters = it.appliedTagFilters - tag) }
 
     fun canMakeRecipe(recipe: Recipe): Boolean {
         val items = _state.value.inventoryItems

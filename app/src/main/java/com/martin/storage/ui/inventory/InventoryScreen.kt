@@ -12,8 +12,10 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -41,15 +43,18 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Camera
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.FilterList
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
@@ -66,7 +71,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Scaffold
@@ -75,6 +79,8 @@ import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -111,6 +117,7 @@ import com.martin.storage.ui.components.GlassCard
 import com.martin.storage.ui.components.NutrientChip
 import com.martin.storage.ui.components.QuantityStepper
 import com.martin.storage.ui.components.StockIndicator
+import com.martin.storage.ui.components.TagAwareSearchBar
 import com.martin.storage.ui.components.UndoSnackbarHost
 import com.martin.storage.ui.receipt.EXTRA_RECEIPT_ITEMS
 import com.martin.storage.ui.receipt.ReceiptScannerActivity
@@ -118,7 +125,6 @@ import com.martin.storage.ui.theme.Error
 import com.martin.storage.ui.theme.ErrorContainer
 import com.martin.storage.ui.theme.OnPrimary
 import com.martin.storage.ui.theme.OnSurfaceVariant
-import com.martin.storage.ui.theme.OutlineVariant
 import com.martin.storage.ui.theme.Primary
 import com.martin.storage.ui.theme.Secondary
 import com.martin.storage.ui.theme.SecondaryContainer
@@ -129,6 +135,9 @@ import com.martin.storage.ui.theme.Tertiary
 import com.martin.storage.ui.theme.TertiaryContainer
 import com.martin.storage.ui.theme.VitalityFluxTheme
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -216,27 +225,38 @@ fun InventoryScreen(
                         }
                     }
                 }
-                // Search Bar
-                SearchBar(
-                    query = state.searchQuery,
-                    onQueryChange = viewModel::setSearch,
-                    onSortClick = { showSortSheet = true },
+                TagAwareSearchBar(
+                    textQuery = state.searchQuery,
+                    onTextQueryChange = viewModel::setSearch,
+                    appliedTagFilters = state.appliedTagFilters,
+                    allAvailableTags = state.allTags,
+                    onTagApplied = viewModel::applyTagFilter,
+                    onTagRemoved = viewModel::removeTagFilter,
+                    placeholder = "Search items…",
+                    trailingContent = {
+                        FilledTonalIconButton(
+                            onClick = { showSortSheet = true },
+                            modifier = Modifier.size(52.dp),
+                            colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                containerColor = SurfaceContainerHigh
+                            )
+                        ) {
+                            Icon(Icons.Default.FilterList, "Sort", tint = Primary)
+                        }
+                    },
                     modifier = Modifier.padding(horizontal = 20.dp).padding(bottom = 8.dp)
                 )
-                // Filter chips
-                AnimatedVisibility(state.allTags.isNotEmpty() || state.selectedCategory != null) {
-                    FilterRow(
-                        categories = groceryCategories,
-                        selectedCategory = state.selectedCategory,
-                        onCategorySelected = viewModel::setCategory,
-                        selectedTags = state.selectedTags,
-                        availableTags = state.allTags,
-                        onTagToggled = viewModel::toggleTag,
-                        showShoppingOnly = state.showShoppingListOnly,
-                        onToggleShoppingOnly = viewModel::toggleShoppingListOnly,
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
-                }
+                CategoryFilterRow(
+                    allCategories = state.allCategories,
+                    customCategories = state.customCategories,
+                    selectedCategory = state.selectedCategory,
+                    onCategorySelected = viewModel::setCategory,
+                    showShoppingOnly = state.showShoppingListOnly,
+                    onToggleShoppingOnly = viewModel::toggleShoppingListOnly,
+                    onAddCategory = viewModel::addCategory,
+                    onRemoveCategory = viewModel::removeCustomCategory,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
             }
         },
         floatingActionButton = {
@@ -290,6 +310,7 @@ fun InventoryScreen(
     if (showAddSheet || editingItem != null) {
         GroceryItemSheet(
             item = editingItem,
+            categories = state.allCategories,
             onSave = { viewModel.upsertItem(it); showAddSheet = false; editingItem = null },
             onDelete = { item ->
                 viewModel.deleteItem(item.id)
@@ -312,70 +333,27 @@ fun InventoryScreen(
     }
 }
 
-// ── Search Bar ────────────────────────────────────────────────────────────────
+// ── Category Filter Row ───────────────────────────────────────────────────────
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun SearchBar(
-    query: String,
-    onQueryChange: (String) -> Unit,
-    onSortClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedTextField(
-            value = query,
-            onValueChange = onQueryChange,
-            placeholder = { Text("Search items…", style = MaterialTheme.typography.bodyMedium) },
-            leadingIcon = { Icon(Icons.Default.Search, null, tint = OnSurfaceVariant) },
-            trailingIcon = {
-                if (query.isNotBlank()) {
-                    IconButton(onClick = { onQueryChange("") }) {
-                        Icon(Icons.Default.Clear, null, tint = OnSurfaceVariant)
-                    }
-                }
-            },
-            singleLine = true,
-            shape = RoundedCornerShape(14.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = Primary,
-                unfocusedBorderColor = OutlineVariant,
-                focusedContainerColor = SurfaceContainerLowest,
-                unfocusedContainerColor = SurfaceContainerLowest
-            ),
-            modifier = Modifier.weight(1f).height(52.dp),
-            textStyle = MaterialTheme.typography.bodyMedium
-        )
-        FilledTonalIconButton(
-            onClick = onSortClick,
-            modifier = Modifier.size(52.dp),
-            colors = IconButtonDefaults.filledTonalIconButtonColors(
-                containerColor = SurfaceContainerHigh
-            )
-        ) {
-            Icon(Icons.Default.FilterList, "Sort / Filter", tint = Primary)
-        }
-    }
-}
-
-// ── Filter Row ────────────────────────────────────────────────────────────────
-
-@Composable
-private fun FilterRow(
-    categories: List<String>,
+private fun CategoryFilterRow(
+    allCategories: List<String>,
+    customCategories: List<String>,
     selectedCategory: String?,
     onCategorySelected: (String?) -> Unit,
-    selectedTags: Set<String>,
-    availableTags: List<String>,
-    onTagToggled: (String) -> Unit,
     showShoppingOnly: Boolean,
     onToggleShoppingOnly: () -> Unit,
+    onAddCategory: (String) -> Unit,
+    onRemoveCategory: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val scrollState = rememberScrollState()
+    var showAddDialog by remember { mutableStateOf(false) }
+
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .horizontalScroll(scrollState)
+            .horizontalScroll(rememberScrollState())
             .padding(horizontal = 20.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -385,21 +363,100 @@ private fun FilterRow(
             selected = showShoppingOnly,
             onClick = onToggleShoppingOnly
         )
-        categories.forEach { cat ->
-            FilterChip(
-                label = cat,
-                selected = selectedCategory == cat,
-                onClick = { onCategorySelected(if (selectedCategory == cat) null else cat) }
-            )
+
+        allCategories.forEach { cat ->
+            val isCustom = cat in customCategories
+            var showDeleteDialog by remember { mutableStateOf(false) }
+
+            Box {
+                val bg = if (selectedCategory == cat) Primary else SurfaceContainerHigh
+                val textColor = if (selectedCategory == cat) OnPrimary else OnSurfaceVariant
+
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(100.dp))
+                        .background(bg)
+                        .combinedClickable(
+                            onLongClick = { if (isCustom) showDeleteDialog = true },
+                            onClick = { onCategorySelected(if (selectedCategory == cat) null else cat) }
+                        )
+                        .padding(horizontal = 14.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(cat, style = MaterialTheme.typography.labelMedium, color = textColor)
+                    // Subtle dot to indicate custom (deletable) category
+                    if (isCustom) {
+                        Box(
+                            modifier = Modifier
+                                .size(5.dp)
+                                .clip(androidx.compose.foundation.shape.CircleShape)
+                                .background(textColor.copy(alpha = 0.5f))
+                        )
+                    }
+                }
+
+                if (showDeleteDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showDeleteDialog = false },
+                        title = { Text("Remove Category?") },
+                        text = { Text("Remove \"$cat\" from your categories? Items already in this category keep their value.") },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                onRemoveCategory(cat)
+                                showDeleteDialog = false
+                            }) { Text("Remove", color = Error) }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showDeleteDialog = false }) { Text("Cancel") }
+                        }
+                    )
+                }
+            }
         }
-        availableTags.forEach { tag ->
-            FilterChip(
-                label = "#$tag",
-                selected = tag in selectedTags,
-                onClick = { onTagToggled(tag) }
-            )
+
+        // Add category button
+        FilledTonalIconButton(
+            onClick = { showAddDialog = true },
+            modifier = Modifier.size(32.dp),
+            colors = IconButtonDefaults.filledTonalIconButtonColors(containerColor = SurfaceContainerHigh)
+        ) {
+            Icon(Icons.Default.Add, "Add category", modifier = Modifier.size(16.dp), tint = Primary)
         }
     }
+
+    if (showAddDialog) {
+        AddCategoryDialog(
+            onAdd = { onAddCategory(it); showAddDialog = false },
+            onDismiss = { showAddDialog = false }
+        )
+    }
+}
+
+@Composable
+private fun AddCategoryDialog(onAdd: (String) -> Unit, onDismiss: () -> Unit) {
+    var text by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("New Category") },
+        text = {
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                label = { Text("Category name") },
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { if (text.isNotBlank()) onAdd(text.trim()) },
+                enabled = text.isNotBlank()
+            ) { Text("Add", color = if (text.isNotBlank()) Primary else OnSurfaceVariant) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
 }
 
 // ── Grocery List Item ─────────────────────────────────────────────────────────
@@ -435,13 +492,15 @@ private fun GroceryListItem(
                     overflow = TextOverflow.Ellipsis
                 )
                 Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         item.category,
                         style = MaterialTheme.typography.labelSmall,
-                        color = OnSurfaceVariant
+                        color = OnSurfaceVariant,
+                        maxLines = 1
                     )
                     item.daysUntilExpiry?.let {
                         if (it <= 5) ExpiryBadge(daysUntilExpiry = it)
@@ -510,6 +569,7 @@ private fun SortBottomSheet(
 @Composable
 fun GroceryItemSheet(
     item: GroceryItem?,
+    categories: List<String> = groceryCategories,
     onSave: (GroceryItem) -> Unit,
     onDelete: ((GroceryItem) -> Unit)? = null,
     onDismiss: () -> Unit
@@ -523,6 +583,16 @@ fun GroceryItemSheet(
     var threshold by remember(item) { mutableStateOf(item?.lowStockThreshold?.toString() ?: "1") }
     var portionSize by remember(item) { mutableStateOf(item?.portionSize?.toString() ?: "1") }
     var notes by remember(item) { mutableStateOf(item?.notes ?: "") }
+
+    // Date picker
+    var showDatePicker by remember { mutableStateOf(false) }
+    val datePickerState = rememberDatePickerState(
+        initialSelectedDateMillis = remember(item?.expiryDate) {
+            val raw = item?.expiryDate ?: ""
+            if (raw.isBlank()) null
+            else try { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).parse(raw)?.time } catch (_: Exception) { null }
+        }
+    )
     var unitExpanded by remember { mutableStateOf(false) }
     var catExpanded by remember { mutableStateOf(false) }
 
@@ -600,7 +670,7 @@ fun GroceryItemSheet(
                     shape = RoundedCornerShape(12.dp)
                 )
                 ExposedDropdownMenu(expanded = catExpanded, onDismissRequest = { catExpanded = false }) {
-                    groceryCategories.forEach { cat ->
+                    categories.forEach { cat ->
                         DropdownMenuItem(text = { Text(cat) }, onClick = { category = cat; catExpanded = false })
                     }
                 }
@@ -618,13 +688,45 @@ fun GroceryItemSheet(
 
             OutlinedTextField(
                 value = expiryDate,
-                onValueChange = { expiryDate = it },
-                label = { Text("Expiry Date (dd/MM/yyyy)") },
-                placeholder = { Text("Leave blank if none") },
+                onValueChange = { },
+                readOnly = true,
+                label = { Text("Expiry Date") },
+                placeholder = { Text("Tap to select") },
                 singleLine = true,
+                trailingIcon = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (expiryDate.isNotBlank()) {
+                            IconButton(onClick = { expiryDate = "" }) {
+                                Icon(Icons.Default.Clear, "Clear date", tint = OnSurfaceVariant, modifier = Modifier.size(18.dp))
+                            }
+                        }
+                        IconButton(onClick = { showDatePicker = true }) {
+                            Icon(Icons.Default.DateRange, "Pick date", tint = Primary)
+                        }
+                    }
+                },
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp)
             )
+
+            if (showDatePicker) {
+                DatePickerDialog(
+                    onDismissRequest = { showDatePicker = false },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            datePickerState.selectedDateMillis?.let { millis ->
+                                expiryDate = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(millis))
+                            }
+                            showDatePicker = false
+                        }) { Text("OK") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showDatePicker = false }) { Text("Cancel") }
+                    }
+                ) {
+                    DatePicker(state = datePickerState)
+                }
+            }
 
             OutlinedTextField(
                 value = threshold,
