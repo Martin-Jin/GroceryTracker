@@ -222,7 +222,8 @@ fun MealsScreen(
                 )
                 2 -> PreparedTab(
                     meals = state.recentPrepared,
-                    onDelete = viewModel::deletePreparedMeal
+                    onDelete = viewModel::deletePreparedMeal,
+                    onMarkEaten = viewModel::markMealAsEaten
                 )
             }
         }
@@ -551,7 +552,11 @@ private fun AddMealPlanDialog(
 // ── Prepared Tab ──────────────────────────────────────────────────────────────
 
 @Composable
-private fun PreparedTab(meals: List<PreparedMeal>, onDelete: (String) -> Unit) {
+private fun PreparedTab(
+    meals: List<PreparedMeal>,
+    onDelete: (String) -> Unit,
+    onMarkEaten: (String) -> Unit
+) {
     if (meals.isEmpty()) {
         EmptyState(
             icon = { Icon(Icons.Outlined.Restaurant, null, Modifier.size(36.dp), tint = OnSurfaceVariant) },
@@ -560,28 +565,108 @@ private fun PreparedTab(meals: List<PreparedMeal>, onDelete: (String) -> Unit) {
             modifier = Modifier.fillMaxSize()
         )
     } else {
-        LazyColumn(contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        LazyColumn(
+            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
             items(meals, key = { it.id }) { meal ->
-                PreparedMealCard(meal = meal, onDelete = { onDelete(meal.id) })
+                PreparedMealCard(
+                    meal = meal,
+                    onDelete = { onDelete(meal.id) },
+                    onMarkEaten = { onMarkEaten(meal.id) }
+                )
             }
         }
     }
 }
 
 @Composable
-private fun PreparedMealCard(meal: PreparedMeal, onDelete: () -> Unit) {
+private fun PreparedMealCard(
+    meal: PreparedMeal,
+    onDelete: () -> Unit,
+    onMarkEaten: () -> Unit
+) {
+    val daysSince = remember(meal.date) {
+        try {
+            val sdf = SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault())
+            val d = sdf.parse(meal.date)
+            ((System.currentTimeMillis() - (d?.time ?: System.currentTimeMillis())) / 86_400_000L)
+                .toInt().coerceAtLeast(0)
+        } catch (_: Exception) { 0 }
+    }
+
     GlassCard(Modifier.fillMaxWidth()) {
-        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(
+            Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(meal.recipeName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Text(meal.date, style = MaterialTheme.typography.bodySmall, color = OnSurfaceVariant)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        meal.recipeName,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    if (meal.eaten) {
+                        Icon(Icons.Default.CheckCircle, null, Modifier.size(15.dp), tint = Tertiary)
+                    }
+                }
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(meal.date, style = MaterialTheme.typography.bodySmall, color = OnSurfaceVariant)
+                    Text(
+                        "· " + when (daysSince) {
+                            0 -> "Today"
+                            1 -> "Yesterday"
+                            else -> "$daysSince days ago"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = OnSurfaceVariant
+                    )
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("${meal.nutritionConsumed.calories.toInt()} kcal", style = MaterialTheme.typography.labelSmall, color = Primary, fontWeight = FontWeight.SemiBold)
-                    Text("${meal.nutritionConsumed.protein.toInt()}g protein", style = MaterialTheme.typography.labelSmall, color = Tertiary)
+                    Text(
+                        "${meal.nutritionConsumed.calories.toInt()} kcal",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Primary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        "${meal.nutritionConsumed.protein.toInt()}g protein",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Tertiary
+                    )
                 }
             }
-            IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
-                Icon(Icons.Default.Close, null, tint = OnSurfaceVariant, modifier = Modifier.size(18.dp))
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                if (!meal.eaten) {
+                    FilledTonalButton(
+                        onClick = onMarkEaten,
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = TertiaryContainer.copy(alpha = 0.4f),
+                            contentColor = Tertiary
+                        ),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Icon(Icons.Default.CheckCircle, null, Modifier.size(14.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Eaten", style = MaterialTheme.typography.labelSmall)
+                    }
+                } else {
+                    NutrientChip("✓ Consumed", color = TertiaryContainer.copy(0.3f), textColor = Tertiary)
+                }
+                IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Default.Close, null, tint = OnSurfaceVariant, modifier = Modifier.size(18.dp))
+                }
             }
         }
     }

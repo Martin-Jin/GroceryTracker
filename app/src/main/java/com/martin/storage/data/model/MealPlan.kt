@@ -20,7 +20,8 @@ data class PreparedMeal(
     val recipeId: String,
     val recipeName: String,
     val servings: Double = 1.0,
-    val nutritionConsumed: NutritionInfo = NutritionInfo()
+    val nutritionConsumed: NutritionInfo = NutritionInfo(),
+    val eaten: Boolean = false  // true = consumed; false = cooked but not yet eaten/may be discarded
 )
 
 /** Simple undo/redo history stack. */

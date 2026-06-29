@@ -19,9 +19,9 @@ data class NutritionUiState(
 
     private val mealsInPeriod: List<PreparedMeal>
         get() = when (selectedPeriod) {
-            NutritionPeriod.TODAY  -> preparedMeals.filter { it.date == todayStr }
-            NutritionPeriod.WEEK   -> preparedMeals.filter { isWithinDays(it.date, 7) }
-            NutritionPeriod.MONTH  -> preparedMeals.filter { isWithinDays(it.date, 30) }
+            NutritionPeriod.TODAY  -> preparedMeals.filter { it.date == todayStr && it.eaten }
+            NutritionPeriod.WEEK   -> preparedMeals.filter { isWithinDays(it.date, 7) && it.eaten }
+            NutritionPeriod.MONTH  -> preparedMeals.filter { isWithinDays(it.date, 30) && it.eaten }
         }
 
     val accumulated: NutritionInfo
@@ -49,7 +49,7 @@ data class NutritionUiState(
         get() = (accumulated.calories / periodTarget.calories).coerceIn(0.0, 1.5).toFloat()
 
     val dailyMealCount: Int
-        get() = preparedMeals.count { it.date == todayStr }
+        get() = preparedMeals.count { it.date == todayStr && it.eaten }
 
     /** Top 3 inventory items per nutrient for suggestions */
     fun topItemsForNutrient(selector: (NutritionInfo) -> Double): List<Pair<GroceryItem, Double>> =

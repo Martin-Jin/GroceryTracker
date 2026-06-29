@@ -8,6 +8,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
 import java.text.SimpleDateFormat
 import java.util.*
+import com.martin.storage.data.model.LocalFoodItem
+import com.martin.storage.data.model.builtInFoodItems
 
 class AppRepository(private val context: Context) {
 
@@ -101,6 +103,12 @@ class AppRepository(private val context: Context) {
         context.saveList(DataKeys.PREPARED_MEALS, list.filter { it.id != id })
     }
 
+    suspend fun markMealAsEaten(id: String) {
+        val current = preparedMeals.firstOrNull() ?: emptyList()
+        context.saveList(DataKeys.PREPARED_MEALS, current.map {
+            if (it.id == id) it.copy(eaten = true) else it
+        })
+    }
     // ── Settings ─────────────────────────────────────────────────────────────
 
     val userSettings: Flow<UserSettings> =
@@ -119,6 +127,26 @@ class AppRepository(private val context: Context) {
     suspend fun removeCustomCategory(name: String) {
         val settings = userSettings.firstOrNull() ?: UserSettings()
         saveUserSettings(settings.copy(customCategories = settings.customCategories.filter { it != name }))
+    }
+
+    // ── Local Food Dataset ────────────────────────────────────────────────────────
+
+    val localFoodItems: Flow<List<LocalFoodItem>> = context.loadList(DataKeys.LOCAL_FOOD_ITEMS)
+
+    /** Merges built-in seed with user-modified/added items (stored overrides built-in). */
+    suspend fun getAllFoodItems(): List<LocalFoodItem> {
+        val stored = localFoodItems.firstOrNull() ?: emptyList()
+        val storedNames = stored.map { it.name }.toSet()
+        return (builtInFoodItems.filter { it.name !in storedNames } + stored)
+            .sortedBy { it.displayName }
+    }
+
+    /** Persists only user-customised entries; built-ins are always loaded from code. */
+    suspend fun upsertLocalFoodItem(item: LocalFoodItem) {
+        val stored = (localFoodItems.firstOrNull() ?: emptyList()).toMutableList()
+        val idx = stored.indexOfFirst { it.name == item.name }
+        if (idx >= 0) stored[idx] = item else stored.add(item)
+        context.saveList(DataKeys.LOCAL_FOOD_ITEMS, stored)
     }
 
     // ── Business logic ───────────────────────────────────────────────────────

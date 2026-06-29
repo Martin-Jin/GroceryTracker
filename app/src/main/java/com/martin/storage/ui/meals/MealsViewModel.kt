@@ -19,7 +19,8 @@ data class MealsUiState(
     val selectedMealType: String?          = null,
     val appliedTagFilters: Set<String>     = emptySet(),
     val canUndo: Boolean                   = false,
-    val canRedo: Boolean                   = false
+    val canRedo: Boolean                   = false,
+    val allFoodItems: List<LocalFoodItem>      = emptyList(),
 ) {
     val allRecipeTags: List<String>
         get() = recipes.flatMap { it.tags }.distinct().sorted()
@@ -70,6 +71,15 @@ class MealsViewModel(private val repo: AppRepository) : ViewModel() {
                     isLoading     = false
                 ) }
             }.collect()
+        }
+        // Keep allFoodItems reactive: reflects user edits to the local food dataset
+        viewModelScope.launch {
+            repo.localFoodItems.collect { stored ->
+                val storedNames = stored.map { it.name }.toSet()
+                val merged = (builtInFoodItems.filter { it.name !in storedNames } + stored)
+                    .sortedBy { it.displayName }
+                _state.update { it.copy(allFoodItems = merged) }
+            }
         }
     }
 
@@ -139,6 +149,28 @@ class MealsViewModel(private val repo: AppRepository) : ViewModel() {
 
     fun deletePreparedMeal(id: String) = viewModelScope.launch {
         repo.deletePreparedMeal(id)
+    }
+
+    fun markMealAsEaten(id: String) = viewModelScope.launch {
+        repo.markMealAsEaten(id)
+    }
+
+    /** Adds a missing ingredient to inventory with amount = 0 (flags it as out-of-stock / shopping list). */
+    fun addMissingIngredientToInventory(ingredientName: String) = viewModelScope.launch {
+        val foodItem = repo.getAllFoodItems().find {
+            it.name.equals(ingredientName, ignoreCase = true) ||
+                    it.displayName.equals(ingredientName, ignoreCase = true)
+        }
+        val groceryItem = GroceryItem(
+            name = foodItem?.displayName ?: ingredientName,
+            amount = 0.0,
+            unit = foodItem?.defaultUnit ?: "g",
+            category = foodItem?.category ?: "General",
+            tags = foodItem?.tags ?: emptyList(),
+            lowStockThreshold = foodItem?.lowStockThreshold ?: 1.0,
+            nutrition = foodItem?.nutrition ?: FoodNutritionDatabase.findBestMatch(ingredientName) ?: NutritionInfo()
+        )
+        repo.upsertGroceryItem(groceryItem)
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

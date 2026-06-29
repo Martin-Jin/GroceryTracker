@@ -5,6 +5,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -26,7 +27,10 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.outlined.ShoppingCart
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -79,6 +83,7 @@ import com.martin.storage.ui.theme.SurfaceContainerLowest
 import com.martin.storage.ui.theme.Tertiary
 import com.martin.storage.ui.theme.TertiaryContainer
 import com.martin.storage.ui.theme.VitalityFluxTheme
+import com.martin.storage.data.model.LocalFoodItem
 
 // ── Recipe Detail ─────────────────────────────────────────────────────────────
 
@@ -174,14 +179,56 @@ fun RecipeDetailScreen(
             }
 
             if (missing.isNotEmpty()) {
+                var addedItems by remember { mutableStateOf(setOf<String>()) }
                 GlassCard(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
                             Icon(Icons.Outlined.ShoppingCart, null, Modifier.size(18.dp), tint = Secondary)
-                            Text("Missing from inventory", style = MaterialTheme.typography.titleSmall, color = Secondary, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "Missing from inventory",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = Secondary,
+                                fontWeight = FontWeight.SemiBold
+                            )
                         }
                         missing.forEach { ing ->
-                            Text("• ${ing.itemName}: ${ing.amount.roundedTo1()} ${ing.unit}", style = MaterialTheme.typography.bodyMedium)
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "• ${ing.itemName}: ${ing.amount.roundedTo1()} ${ing.unit}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (ing.itemName in addedItems) {
+                                    NutrientChip(
+                                        "✓ Added",
+                                        color = TertiaryContainer.copy(.3f),
+                                        textColor = Tertiary
+                                    )
+                                } else {
+                                    FilledTonalButton(
+                                        onClick = {
+                                            viewModel.addMissingIngredientToInventory(ing.itemName)
+                                            addedItems = addedItems + ing.itemName
+                                        },
+                                        colors = ButtonDefaults.filledTonalButtonColors(
+                                            containerColor = SecondaryContainer.copy(alpha = 0.3f),
+                                            contentColor = Secondary
+                                        ),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                    ) {
+                                        Icon(Icons.Default.Add, null, Modifier.size(14.dp))
+                                        Spacer(Modifier.width(4.dp))
+                                        Text("Add to Inventory", style = MaterialTheme.typography.labelSmall)
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -363,7 +410,7 @@ fun RecipeEditScreen(
             SectionHeader("Ingredients", trailingContent = {
                 Text("${ingredients.size} added", style = MaterialTheme.typography.labelMedium, color = OnSurfaceVariant)
             })
-            IngredientEditor(ingredients = ingredients, onChange = { ingredients = it })
+            IngredientEditor(ingredients = ingredients, allFoodItems = state.allFoodItems, onChange = { ingredients = it })
 
             // Instructions
             SectionHeader("Instructions", trailingContent = {
@@ -379,39 +426,150 @@ fun RecipeEditScreen(
 }
 
 @Composable
-private fun IngredientEditor(ingredients: List<RecipeIngredient>, onChange: (List<RecipeIngredient>) -> Unit) {
-    var ingName   by remember { mutableStateOf("") }
-    var ingAmount by remember { mutableStateOf("") }
-    var ingUnit   by remember { mutableStateOf("g") }
+private fun IngredientEditor(
+    ingredients: List<RecipeIngredient>,
+    allFoodItems: List<LocalFoodItem>,
+    onChange: (List<RecipeIngredient>) -> Unit
+) {
+    var ingName     by remember { mutableStateOf("") }
+    var ingAmount   by remember { mutableStateOf("") }
+    var ingUnit     by remember { mutableStateOf("g") }
+    var suggestions by remember { mutableStateOf<List<LocalFoodItem>>(emptyList()) }
+    var showSuggestions by remember { mutableStateOf(false) }
+    var selectedFood by remember { mutableStateOf<LocalFoodItem?>(null) }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         ingredients.forEachIndexed { idx, ing ->
             Row(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(SurfaceContainerLowest).padding(10.dp),
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(SurfaceContainerLowest)
+                    .padding(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("${ing.itemName} — ${ing.amount.roundedTo1()} ${ing.unit}", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                IconButton(onClick = { onChange(ingredients.toMutableList().also { it.removeAt(idx) }) }, modifier = Modifier.size(28.dp)) {
+                Text(
+                    "${ing.itemName} — ${ing.amount.roundedTo1()} ${ing.unit}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(
+                    onClick = { onChange(ingredients.toMutableList().also { it.removeAt(idx) }) },
+                    modifier = Modifier.size(28.dp)
+                ) {
                     Icon(Icons.Default.Close, null, Modifier.size(16.dp), tint = Error)
                 }
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Bottom) {
-            OutlinedTextField(ingName, { ingName = it }, label = { Text("Name") }, singleLine = true, modifier = Modifier.weight(2f), shape = RoundedCornerShape(10.dp))
-            OutlinedTextField(ingAmount, { ingAmount = it }, label = { Text("Amt") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, modifier = Modifier.weight(1f), shape = RoundedCornerShape(10.dp))
-            OutlinedTextField(ingUnit, { ingUnit = it }, label = { Text("Unit") }, singleLine = true, modifier = Modifier.weight(1f), shape = RoundedCornerShape(10.dp))
+
+        // Add-ingredient row with autocomplete on the name field
+        val nameMatchesDataset = allFoodItems.isEmpty() ||
+                allFoodItems.any {
+                    it.displayName.equals(ingName, ignoreCase = true) ||
+                            it.name.equals(ingName, ignoreCase = true)
+                }
+        val canAdd = ingName.isNotBlank() && ingAmount.isNotBlank() && nameMatchesDataset
+
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.Bottom
+        ) {
+            Box(Modifier.weight(2f)) {
+                OutlinedTextField(
+                    value = ingName,
+                    onValueChange = { newName ->
+                        ingName = newName
+                        selectedFood = null
+                        suggestions = allFoodItems.filter { food ->
+                            food.displayName.contains(newName, ignoreCase = true) ||
+                                    food.name.contains(newName, ignoreCase = true)
+                        }.take(6)
+                        showSuggestions = suggestions.isNotEmpty() && newName.isNotBlank()
+                    },
+                    label = { Text("Ingredient") },
+                    placeholder = { Text("Search food…") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp),
+                    trailingIcon = {
+                        if (selectedFood != null) {
+                            Icon(Icons.Default.CheckCircle, null, Modifier.size(16.dp), tint = Tertiary)
+                        }
+                    }
+                )
+                DropdownMenu(
+                    expanded = showSuggestions,
+                    onDismissRequest = { showSuggestions = false }
+                ) {
+                    suggestions.forEach { food ->
+                        DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Text(food.displayName, style = MaterialTheme.typography.bodyMedium)
+                                    Text(
+                                        "${food.nutrition.calories.toInt()} kcal · " +
+                                                "${food.nutrition.protein.toInt()}g prot · ${food.defaultUnit}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = OnSurfaceVariant
+                                    )
+                                }
+                            },
+                            onClick = {
+                                ingName = food.displayName
+                                ingUnit = food.defaultUnit
+                                selectedFood = food
+                                showSuggestions = false
+                            }
+                        )
+                    }
+                }
+            }
+
+            OutlinedTextField(
+                ingAmount, { ingAmount = it },
+                label = { Text("Amt") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                singleLine = true,
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(10.dp)
+            )
+            OutlinedTextField(
+                ingUnit, { ingUnit = it },
+                label = { Text("Unit") },
+                singleLine = true,
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(10.dp)
+            )
             IconButton(
                 onClick = {
-                    if (ingName.isNotBlank() && ingAmount.isNotBlank()) {
-                        onChange(ingredients + RecipeIngredient(ingName.trim(), ingAmount.toDoubleOrNull() ?: 1.0, ingUnit.trim()))
-                        ingName = ""; ingAmount = ""
+                    if (canAdd) {
+                        onChange(
+                            ingredients + RecipeIngredient(
+                                ingName.trim(),
+                                ingAmount.toDoubleOrNull() ?: 1.0,
+                                ingUnit.trim()
+                            )
+                        )
+                        ingName = ""; ingAmount = ""; selectedFood = null
                     }
                 },
-                modifier = Modifier.size(48.dp).clip(RoundedCornerShape(10.dp)).background(Primary)
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (canAdd) Primary else SurfaceContainerHigh)
             ) {
-                Icon(Icons.Default.Add, null, tint = OnPrimary)
+                Icon(Icons.Default.Add, null, tint = if (canAdd) OnPrimary else OnSurfaceVariant)
             }
+        }
+
+        // Hint when typed name doesn't match any food in the dataset
+        if (ingName.isNotBlank() && allFoodItems.isNotEmpty() && !nameMatchesDataset) {
+            Text(
+                "⚠ \"$ingName\" isn't in the food dataset — select from the dropdown for nutrition tracking.",
+                style = MaterialTheme.typography.labelSmall,
+                color = Secondary
+            )
         }
     }
 }

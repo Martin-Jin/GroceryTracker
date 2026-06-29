@@ -8,6 +8,7 @@ import kotlinx.coroutines.launch
 
 data class InventoryUiState(
     val items: List<GroceryItem>        = emptyList(),
+    val allFoodItems: List<LocalFoodItem>       = emptyList(),
     val searchQuery: String             = "",
     val selectedCategory: String?       = null,
     val appliedTagFilters: Set<String>  = emptySet(),
@@ -66,20 +67,20 @@ class InventoryViewModel(private val repo: AppRepository) : ViewModel() {
 
     init {
         viewModelScope.launch {
-            combine(repo.groceryItems, repo.userSettings) { items, settings ->
-                Pair(items, settings)
-            }.collect { (items, settings) ->
-                _state.update {
-                    it.copy(
-                        items = items,
-                        isLoading = false,
-                        customCategories = settings.customCategories
-                    )
-                }
+            repo.groceryItems.collect { items ->
+                _state.update { it.copy(items = items, isLoading = false) }
+            }
+        }
+        // Keep allFoodItems reactive: re-merge whenever the user saves a custom item
+        viewModelScope.launch {
+            repo.localFoodItems.collect { stored ->
+                val storedNames = stored.map { it.name }.toSet()
+                val merged = (builtInFoodItems.filter { it.name !in storedNames } + stored)
+                    .sortedBy { it.displayName }
+                _state.update { it.copy(allFoodItems = merged) }
             }
         }
     }
-
     // ── Mutations ─────────────────────────────────────────────────────────────
 
     fun upsertItem(item: GroceryItem) = viewModelScope.launch {
@@ -95,6 +96,10 @@ class InventoryViewModel(private val repo: AppRepository) : ViewModel() {
     fun adjustAmount(id: String, delta: Double) = viewModelScope.launch {
         pushUndo()
         repo.adjustAmount(id, delta)
+    }
+
+    fun upsertLocalFoodItem(item: LocalFoodItem) = viewModelScope.launch {
+        repo.upsertLocalFoodItem(item)
     }
 
     // ── Filters / Search ─────────────────────────────────────────────────────

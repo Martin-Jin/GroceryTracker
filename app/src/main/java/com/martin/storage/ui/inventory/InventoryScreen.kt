@@ -30,31 +30,30 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Redo
 import androidx.compose.material.icons.automirrored.outlined.Undo
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Camera
-import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.FilterList
-import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Inventory2
+import androidx.compose.material.icons.outlined.Science
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DatePicker
-import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
@@ -80,7 +79,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -95,6 +93,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -104,6 +103,7 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.martin.storage.data.model.FoodNutritionDatabase
 import com.martin.storage.data.model.GroceryItem
+import com.martin.storage.data.model.LocalFoodItem
 import com.martin.storage.data.model.NutritionInfo
 import com.martin.storage.data.model.defaultUnits
 import com.martin.storage.data.model.groceryCategories
@@ -124,6 +124,7 @@ import com.martin.storage.ui.receipt.ReceiptScannerActivity
 import com.martin.storage.ui.theme.Error
 import com.martin.storage.ui.theme.ErrorContainer
 import com.martin.storage.ui.theme.OnPrimary
+import com.martin.storage.ui.theme.OnSurface
 import com.martin.storage.ui.theme.OnSurfaceVariant
 import com.martin.storage.ui.theme.Primary
 import com.martin.storage.ui.theme.Secondary
@@ -135,9 +136,6 @@ import com.martin.storage.ui.theme.Tertiary
 import com.martin.storage.ui.theme.TertiaryContainer
 import com.martin.storage.ui.theme.VitalityFluxTheme
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -310,17 +308,9 @@ fun InventoryScreen(
     if (showAddSheet || editingItem != null) {
         GroceryItemSheet(
             item = editingItem,
-            categories = state.allCategories,
+            allFoodItems = state.allFoodItems,
             onSave = { viewModel.upsertItem(it); showAddSheet = false; editingItem = null },
-            onDelete = { item ->
-                viewModel.deleteItem(item.id)
-                scope.launch {
-                    val result = snackbarHostState.showSnackbar("${item.name} deleted", "Undo", duration = SnackbarDuration.Short)
-                    if (result == SnackbarResult.ActionPerformed) viewModel.undo()
-                }
-                showAddSheet = false
-                editingItem = null
-            },
+            onUpsertFoodItem = { viewModel.upsertLocalFoodItem(it) },
             onDismiss = { showAddSheet = false; editingItem = null }
         )
     }
@@ -564,37 +554,29 @@ private fun SortBottomSheet(
 }
 
 // ── Grocery Item Edit/Add Sheet ───────────────────────────────────────────────
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GroceryItemSheet(
     item: GroceryItem?,
-    categories: List<String> = groceryCategories,
+    allFoodItems: List<LocalFoodItem>,
     onSave: (GroceryItem) -> Unit,
-    onDelete: ((GroceryItem) -> Unit)? = null,
+    onUpsertFoodItem: (LocalFoodItem) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var name by remember(item) { mutableStateOf(item?.name ?: "") }
-    var amount by remember(item) { mutableStateOf(item?.amount?.toString() ?: "1") }
-    var unit by remember(item) { mutableStateOf(item?.unit ?: "units") }
-    var category by remember(item) { mutableStateOf(item?.category ?: "General") }
-    var tagsRaw by remember(item) { mutableStateOf(item?.tags?.joinToString(", ") ?: "") }
-    var expiryDate by remember(item) { mutableStateOf(item?.expiryDate ?: "") }
-    var threshold by remember(item) { mutableStateOf(item?.lowStockThreshold?.toString() ?: "1") }
-    var portionSize by remember(item) { mutableStateOf(item?.portionSize?.toString() ?: "1") }
-    var notes by remember(item) { mutableStateOf(item?.notes ?: "") }
-
-    // Date picker
-    var showDatePicker by remember { mutableStateOf(false) }
-    val datePickerState = rememberDatePickerState(
-        initialSelectedDateMillis = remember(item?.expiryDate) {
-            val raw = item?.expiryDate ?: ""
-            if (raw.isBlank()) null
-            else try { SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).parse(raw)?.time } catch (_: Exception) { null }
-        }
-    )
+    var name        by remember(item) { mutableStateOf(item?.name ?: "") }
+    var amount      by remember(item) { mutableStateOf(item?.amount?.toString() ?: "1") }
+    var unit        by remember(item) { mutableStateOf(item?.unit ?: "units") }
+    var category    by remember(item) { mutableStateOf(item?.category ?: "General") }
+    var tagsRaw     by remember(item) { mutableStateOf(item?.tags?.joinToString(", ") ?: "") }
+    var expiryDate  by remember(item) { mutableStateOf(item?.expiryDate ?: "") }
+    var threshold   by remember(item) { mutableStateOf(item?.lowStockThreshold?.toString() ?: "1") }
+    var notes       by remember(item) { mutableStateOf(item?.notes ?: "") }
+    var nutritionState by remember(item) { mutableStateOf(item?.nutrition ?: NutritionInfo()) }
+    var showNutritionEditor by remember { mutableStateOf(false) }
+    var nameSuggestions by remember { mutableStateOf<List<LocalFoodItem>>(emptyList()) }
+    var showNameSuggestions by remember { mutableStateOf(false) }
     var unitExpanded by remember { mutableStateOf(false) }
-    var catExpanded by remember { mutableStateOf(false) }
+    var catExpanded  by remember { mutableStateOf(false) }
 
     val scrollState = rememberScrollState()
 
@@ -618,21 +600,60 @@ fun GroceryItemSheet(
                 fontWeight = FontWeight.Bold
             )
 
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it },
-                label = { Text("Item name *") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp)
-            )
+            // ── Name with autocomplete ────────────────────────────────────────
+            Box {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { newName ->
+                        name = newName
+                        nameSuggestions = allFoodItems.filter { food ->
+                            food.displayName.contains(newName, ignoreCase = true) ||
+                                    food.name.contains(newName, ignoreCase = true)
+                        }.take(6)
+                        showNameSuggestions = nameSuggestions.isNotEmpty() && newName.isNotBlank()
+                    },
+                    label = { Text("Item name *") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+                DropdownMenu(
+                    expanded = showNameSuggestions,
+                    onDismissRequest = { showNameSuggestions = false }
+                ) {
+                    nameSuggestions.forEach { food ->
+                        DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Text(food.displayName, style = MaterialTheme.typography.bodyMedium)
+                                    Text(
+                                        food.category + if (food.tags.isNotEmpty()) " · ${food.tags.take(2).joinToString(", ")}" else "",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = OnSurfaceVariant
+                                    )
+                                }
+                            },
+                            onClick = {
+                                name          = food.displayName
+                                category      = food.category
+                                unit          = food.defaultUnit
+                                amount        = food.defaultAmount.toString()
+                                tagsRaw       = food.tags.joinToString(", ")
+                                threshold     = food.lowStockThreshold.toString()
+                                nutritionState = food.nutrition
+                                showNameSuggestions = false
+                            }
+                        )
+                    }
+                }
+            }
 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
                     value = amount,
                     onValueChange = { amount = it },
                     label = { Text("Amount") },
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true,
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(12.dp)
@@ -670,7 +691,7 @@ fun GroceryItemSheet(
                     shape = RoundedCornerShape(12.dp)
                 )
                 ExposedDropdownMenu(expanded = catExpanded, onDismissRequest = { catExpanded = false }) {
-                    categories.forEach { cat ->
+                    groceryCategories.forEach { cat ->
                         DropdownMenuItem(text = { Text(cat) }, onClick = { category = cat; catExpanded = false })
                     }
                 }
@@ -688,61 +709,19 @@ fun GroceryItemSheet(
 
             OutlinedTextField(
                 value = expiryDate,
-                onValueChange = { },
-                readOnly = true,
-                label = { Text("Expiry Date") },
-                placeholder = { Text("Tap to select") },
+                onValueChange = { expiryDate = it },
+                label = { Text("Expiry Date (dd/MM/yyyy)") },
+                placeholder = { Text("Leave blank if none") },
                 singleLine = true,
-                trailingIcon = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (expiryDate.isNotBlank()) {
-                            IconButton(onClick = { expiryDate = "" }) {
-                                Icon(Icons.Default.Clear, "Clear date", tint = OnSurfaceVariant, modifier = Modifier.size(18.dp))
-                            }
-                        }
-                        IconButton(onClick = { showDatePicker = true }) {
-                            Icon(Icons.Default.DateRange, "Pick date", tint = Primary)
-                        }
-                    }
-                },
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp)
             )
-
-            if (showDatePicker) {
-                DatePickerDialog(
-                    onDismissRequest = { showDatePicker = false },
-                    confirmButton = {
-                        TextButton(onClick = {
-                            datePickerState.selectedDateMillis?.let { millis ->
-                                expiryDate = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(millis))
-                            }
-                            showDatePicker = false
-                        }) { Text("OK") }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { showDatePicker = false }) { Text("Cancel") }
-                    }
-                ) {
-                    DatePicker(state = datePickerState)
-                }
-            }
 
             OutlinedTextField(
                 value = threshold,
                 onValueChange = { threshold = it },
                 label = { Text("Low-stock Threshold") },
-                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp)
-            )
-
-            OutlinedTextField(
-                value = portionSize,
-                onValueChange = { portionSize = it },
-                label = { Text("Portion size (step per +/-)") },
-                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp)
@@ -758,27 +737,95 @@ fun GroceryItemSheet(
                 shape = RoundedCornerShape(12.dp)
             )
 
+            // ── Nutrition editor (expandable) ─────────────────────────────────
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(SurfaceContainerHigh)
+                    .clickable { showNutritionEditor = !showNutritionEditor }
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Outlined.Science, null, Modifier.size(16.dp), tint = Tertiary)
+                    Text(
+                        "Nutrition Info (per 100g / ml)",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = OnSurface
+                    )
+                }
+                Text(
+                    if (showNutritionEditor) "Collapse ▲" else "Edit ▼",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Primary
+                )
+            }
+
+            AnimatedVisibility(showNutritionEditor) {
+                Column(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(SurfaceContainerLowest)
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text("Macronutrients", style = MaterialTheme.typography.labelMedium, color = OnSurfaceVariant)
+                    NutritionInputRow("Calories", nutritionState.calories, "kcal") { nutritionState = nutritionState.copy(calories = it) }
+                    NutritionInputRow("Protein", nutritionState.protein, "g") { nutritionState = nutritionState.copy(protein = it) }
+                    NutritionInputRow("Carbohydrates", nutritionState.carbs, "g") { nutritionState = nutritionState.copy(carbs = it) }
+                    NutritionInputRow("Fat", nutritionState.fat, "g") { nutritionState = nutritionState.copy(fat = it) }
+                    NutritionInputRow("Fibre", nutritionState.fiber, "g") { nutritionState = nutritionState.copy(fiber = it) }
+                    NutritionInputRow("Sugar", nutritionState.sugar, "g") { nutritionState = nutritionState.copy(sugar = it) }
+                    Spacer(Modifier.height(2.dp))
+                    Text("Micronutrients", style = MaterialTheme.typography.labelMedium, color = OnSurfaceVariant)
+                    NutritionInputRow("Vitamin C", nutritionState.vitaminC, "mg") { nutritionState = nutritionState.copy(vitaminC = it) }
+                    NutritionInputRow("Iron", nutritionState.iron, "mg") { nutritionState = nutritionState.copy(iron = it) }
+                    NutritionInputRow("Calcium", nutritionState.calcium, "mg") { nutritionState = nutritionState.copy(calcium = it) }
+                    NutritionInputRow("Vitamin D", nutritionState.vitaminD, "mcg") { nutritionState = nutritionState.copy(vitaminD = it) }
+                    NutritionInputRow("Vitamin A", nutritionState.vitaminA, "mcg RAE") { nutritionState = nutritionState.copy(vitaminA = it) }
+                    NutritionInputRow("Magnesium", nutritionState.magnesium, "mg") { nutritionState = nutritionState.copy(magnesium = it) }
+                    NutritionInputRow("Zinc", nutritionState.zinc, "mg") { nutritionState = nutritionState.copy(zinc = it) }
+                }
+            }
+
             val isValid = name.isNotBlank()
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("Cancel") }
                 Button(
                     onClick = {
                         val tags = tagsRaw.split(",").map { it.trim() }.filter { it.isNotBlank() }
-                        val nutrition = FoodNutritionDatabase.findBestMatch(name) ?: item?.nutrition ?: NutritionInfo()
+                        val trimmedName = name.trim()
+                        // Persist to local food dataset so future items & recipes can reference it
+                        onUpsertFoodItem(
+                            LocalFoodItem(
+                                name = trimmedName.lowercase(),
+                                displayName = trimmedName,
+                                category = category,
+                                tags = tags,
+                                defaultUnit = unit,
+                                defaultAmount = amount.toDoubleOrNull() ?: 1.0,
+                                lowStockThreshold = threshold.toDoubleOrNull() ?: 1.0,
+                                nutrition = nutritionState
+                            )
+                        )
                         onSave(
                             GroceryItem(
                                 id = item?.id ?: java.util.UUID.randomUUID().toString(),
-                                name = name.trim(),
+                                name = trimmedName,
                                 amount = amount.toDoubleOrNull() ?: 1.0,
                                 unit = unit,
                                 category = category,
                                 tags = tags,
                                 expiryDate = expiryDate.trim(),
                                 lowStockThreshold = threshold.toDoubleOrNull() ?: 1.0,
-                                portionSize = portionSize.toDoubleOrNull()?.coerceAtLeast(0.01) ?: 1.0,
                                 notes = notes.trim(),
                                 addedDate = item?.addedDate ?: todayDateStr(),
-                                nutrition = nutrition
+                                nutrition = nutritionState
                             )
                         )
                     },
@@ -787,17 +834,43 @@ fun GroceryItemSheet(
                     colors = ButtonDefaults.buttonColors(containerColor = Primary)
                 ) { Text("Save") }
             }
-            if (item != null && onDelete != null) {
-                Button(
-                    onClick = { onDelete(item) },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = Error)
-                ) {
-                    Icon(Icons.Outlined.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Text("  Delete Item")
-                }
-            }
         }
+    }
+}
+
+@Composable
+private fun NutritionInputRow(
+    label: String,
+    value: Double,
+    unit: String,
+    onValueChange: (Double) -> Unit
+) {
+    var text by remember(value) {
+        mutableStateOf(if (value == 0.0) "" else value.toBigDecimal().stripTrailingZeros().toPlainString())
+    }
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            "$label ($unit)",
+            style = MaterialTheme.typography.bodySmall,
+            color = OnSurfaceVariant,
+            modifier = Modifier.weight(1f)
+        )
+        OutlinedTextField(
+            value = text,
+            onValueChange = { newText ->
+                text = newText
+                newText.toDoubleOrNull()?.let { onValueChange(it) }
+            },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            singleLine = true,
+            modifier = Modifier.width(90.dp),
+            textStyle = MaterialTheme.typography.bodyMedium,
+            shape = RoundedCornerShape(8.dp)
+        )
     }
 }
 
