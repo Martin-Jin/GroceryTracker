@@ -74,10 +74,7 @@ class MealsViewModel(private val repo: AppRepository) : ViewModel() {
         }
         // Keep allFoodItems reactive: reflects user edits to the local food dataset
         viewModelScope.launch {
-            repo.localFoodItems.collect { stored ->
-                val storedNames = stored.map { it.name }.toSet()
-                val merged = (builtInFoodItems.filter { it.name !in storedNames } + stored)
-                    .sortedBy { it.displayName }
+            repo.allFoodItems.collect { merged ->
                 _state.update { it.copy(allFoodItems = merged) }
             }
         }

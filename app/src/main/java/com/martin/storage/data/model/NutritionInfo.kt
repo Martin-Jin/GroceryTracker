@@ -43,8 +43,6 @@ data class NutritionInfo(
     )
 }
 
-val ZERO_NUTRITION = NutritionInfo()
-
 /** Built-in nutrition lookup table (per 100 g/ml). */
 object FoodNutritionDatabase {
     private val db = mapOf(
@@ -89,6 +87,4 @@ object FoodNutritionDatabase {
             lower.contains(key) || key.contains(lower)
         }?.value
     }
-
-    fun allFoodNames(): List<String> = db.keys.toList()
 }

@@ -2,7 +2,9 @@ package com.martin.storage.data.model
 
 import kotlinx.serialization.Serializable
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Date
+import java.util.Locale
+import java.util.UUID
 
 @Serializable
 data class GroceryItem(
@@ -34,7 +36,7 @@ data class GroceryItem(
                 val expiry = sdf.parse(expiryDate) ?: return null
                 val diff = expiry.time - System.currentTimeMillis()
                 (diff / 86_400_000).toInt()
-            } catch (e: Exception) { null }
+            } catch (_: Exception) { null }
         }
 
     val isExpiringSoon: Boolean
@@ -55,6 +57,4 @@ val defaultUnits = GroceryUnit.entries.map { it.label }
 fun todayDateStr(): String =
     SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date())
 
-val groceryCategories = listOf(
-    "Vegetables"
-)
+val groceryCategories = listOf<String>()

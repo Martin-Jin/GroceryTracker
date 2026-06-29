@@ -53,6 +53,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.martin.storage.data.model.FoodNutritionDatabase
 import com.martin.storage.data.model.MealType
@@ -500,7 +501,8 @@ private fun IngredientEditor(
                 )
                 DropdownMenu(
                     expanded = showSuggestions,
-                    onDismissRequest = { showSuggestions = false }
+                    onDismissRequest = { showSuggestions = false },
+                    properties = PopupProperties(focusable = false)
                 ) {
                     suggestions.forEach { food ->
                         DropdownMenuItem(

@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -45,6 +47,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Camera
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material.icons.outlined.Science
 import androidx.compose.material.icons.outlined.Settings
@@ -77,14 +80,17 @@ import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -97,6 +103,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.PopupProperties
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.gson.Gson
@@ -135,7 +142,6 @@ import com.martin.storage.ui.theme.SurfaceContainerLowest
 import com.martin.storage.ui.theme.Tertiary
 import com.martin.storage.ui.theme.TertiaryContainer
 import com.martin.storage.ui.theme.VitalityFluxTheme
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -146,10 +152,18 @@ fun InventoryScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
-    val scope = rememberCoroutineScope()
     var showAddSheet by remember { mutableStateOf(false) }
     var editingItem by remember { mutableStateOf<GroceryItem?>(null) }
     var showSortSheet by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        viewModel.events.collect { event ->
+            when (event) {
+                is InventoryEvent.DuplicateName ->
+                    snackbarHostState.showSnackbar("\"${event.name}\" is already in your inventory")
+            }
+        }
+    }
 
     val context = LocalContext.current
 
@@ -286,19 +300,54 @@ fun InventoryScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 items(state.filtered, key = { it.id }) { item ->
-                    GroceryListItem(
-                        item = item,
-                        onEdit = { editingItem = item },
-                        onDelete = {
+                    val dismissState = rememberSwipeToDismissBoxState()
+
+                    LaunchedEffect(dismissState.currentValue) {
+                        if (dismissState.currentValue == SwipeToDismissBoxValue.EndToStart) {
                             viewModel.deleteItem(item.id)
-                            scope.launch {
-                                val result = snackbarHostState.showSnackbar("${item.name} deleted", "Undo", duration = SnackbarDuration.Short)
-                                if (result == SnackbarResult.ActionPerformed) viewModel.undo()
+                            val result = snackbarHostState.showSnackbar(
+                                "${item.name} deleted", "Undo",
+                                duration = SnackbarDuration.Short
+                            )
+                            if (result == SnackbarResult.ActionPerformed) viewModel.undo()
+                        }
+                    }
+
+                    SwipeToDismissBox(
+                        state = dismissState,
+                        enableDismissFromStartToEnd = false,
+                        backgroundContent = {
+                            val color by animateColorAsState(
+                                targetValue = when (dismissState.targetValue) {
+                                    SwipeToDismissBoxValue.EndToStart -> Error.copy(alpha = 0.15f)
+                                    else -> Color.Transparent
+                                },
+                                label = "swipeBg"
+                            )
+                            Box(
+                                Modifier
+                                    .fillMaxSize()
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(color)
+                                    .padding(end = 20.dp),
+                                contentAlignment = Alignment.CenterEnd
+                            ) {
+                                Icon(
+                                    Icons.Outlined.Delete,
+                                    contentDescription = "Delete",
+                                    tint = Error,
+                                    modifier = Modifier.size(22.dp)
+                                )
                             }
-                        },
-                        onIncrease = { viewModel.adjustAmount(item.id, item.portionSize) },
-                        onDecrease = { viewModel.adjustAmount(item.id, -item.portionSize) }
-                    )
+                        }
+                    ) {
+                        GroceryListItem(
+                            item = item,
+                            onEdit = { editingItem = item },
+                            onIncrease = { viewModel.adjustAmount(item.id, item.portionSize) },
+                            onDecrease = { viewModel.adjustAmount(item.id, -item.portionSize) }
+                        )
+                    }
                 }
                 item { Spacer(Modifier.height(80.dp)) }
             }
@@ -450,13 +499,10 @@ private fun AddCategoryDialog(onAdd: (String) -> Unit, onDismiss: () -> Unit) {
 }
 
 // ── Grocery List Item ─────────────────────────────────────────────────────────
-
-// Find the entire GroceryListItem function and replace with:
 @Composable
 private fun GroceryListItem(
     item: GroceryItem,
     onEdit: () -> Unit,
-    onDelete: () -> Unit,
     onIncrease: () -> Unit,
     onDecrease: () -> Unit
 ) {
@@ -465,7 +511,9 @@ private fun GroceryListItem(
         onClick = onEdit
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            modifier = Modifier
+                .padding(horizontal = 14.dp, vertical = 10.dp)
+                .defaultMinSize(minHeight = 72.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
@@ -475,16 +523,17 @@ private fun GroceryListItem(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(3.dp)
             ) {
+                // Name row
                 Text(
                     item.name,
                     style = MaterialTheme.typography.titleMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                // Always-present subtitle row: category + optional expiry badge inline
                 Row(
-                    modifier = Modifier.horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Text(
                         item.category,
@@ -492,25 +541,28 @@ private fun GroceryListItem(
                         color = OnSurfaceVariant,
                         maxLines = 1
                     )
-                    item.daysUntilExpiry?.let {
-                        if (it <= 5) ExpiryBadge(daysUntilExpiry = it)
+                    item.daysUntilExpiry?.let { days ->
+                        if (days <= 5) ExpiryBadge(daysUntilExpiry = days)
                     }
                 }
-                if (item.tags.isNotEmpty()) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        item.tags.forEach { tag ->
-                            NutrientChip(
-                                tag,
-                                color = TertiaryContainer.copy(.25f),
-                                textColor = Tertiary,
-                                modifier = Modifier.widthIn(max = 90.dp)
-                            )
+                // Tags row — always occupies same height via a fixed-height box
+                Box(modifier = Modifier.height(22.dp)) {
+                    if (item.tags.isNotEmpty()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            item.tags.forEach { tag ->
+                                NutrientChip(
+                                    tag,
+                                    color = TertiaryContainer.copy(.25f),
+                                    textColor = Tertiary,
+                                    modifier = Modifier.widthIn(max = 90.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -619,7 +671,8 @@ fun GroceryItemSheet(
                 )
                 DropdownMenu(
                     expanded = showNameSuggestions,
-                    onDismissRequest = { showNameSuggestions = false }
+                    onDismissRequest = { showNameSuggestions = false },
+                    properties = PopupProperties(focusable = false)   // ← KEY FIX
                 ) {
                     nameSuggestions.forEach { food ->
                         DropdownMenuItem(
@@ -634,12 +687,12 @@ fun GroceryItemSheet(
                                 }
                             },
                             onClick = {
-                                name          = food.displayName
-                                category      = food.category
-                                unit          = food.defaultUnit
-                                amount        = food.defaultAmount.toString()
-                                tagsRaw       = food.tags.joinToString(", ")
-                                threshold     = food.lowStockThreshold.toString()
+                                name           = food.displayName
+                                category       = food.category
+                                unit           = food.defaultUnit
+                                amount         = food.defaultAmount.toString()
+                                tagsRaw        = food.tags.joinToString(", ")
+                                threshold      = food.lowStockThreshold.toString()
                                 nutritionState = food.nutrition
                                 showNameSuggestions = false
                             }
@@ -647,7 +700,6 @@ fun GroceryItemSheet(
                     }
                 }
             }
-
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
                     value = amount,

@@ -10,6 +10,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 import com.martin.storage.data.model.LocalFoodItem
 import com.martin.storage.data.model.builtInFoodItems
+import kotlinx.coroutines.flow.map
 
 class AppRepository(private val context: Context) {
 
@@ -132,6 +133,12 @@ class AppRepository(private val context: Context) {
     // ── Local Food Dataset ────────────────────────────────────────────────────────
 
     val localFoodItems: Flow<List<LocalFoodItem>> = context.loadList(DataKeys.LOCAL_FOOD_ITEMS)
+    // Add to AppRepository, after the localFoodItems flow declaration:
+    val allFoodItems: Flow<List<LocalFoodItem>> = localFoodItems.map { stored ->
+        val storedNames = stored.map { it.name }.toSet()
+        (builtInFoodItems.filter { it.name !in storedNames } + stored)
+            .sortedBy { it.displayName }
+    }
 
     /** Merges built-in seed with user-modified/added items (stored overrides built-in). */
     suspend fun getAllFoodItems(): List<LocalFoodItem> {
@@ -150,19 +157,6 @@ class AppRepository(private val context: Context) {
     }
 
     // ── Business logic ───────────────────────────────────────────────────────
-
-    /** Items where amount ≤ threshold. */
-    suspend fun getShoppingList(): List<GroceryItem> =
-        (groceryItems.firstOrNull() ?: emptyList())
-            .filter { it.isLowStock || it.isOutOfStock }
-
-    /** Check if all required ingredients are available for a recipe. */
-    suspend fun canMakeRecipe(recipe: Recipe): Boolean {
-        val items = groceryItems.firstOrNull() ?: emptyList()
-        return recipe.ingredients.filter { !it.optional }.all { ing ->
-            items.any { it.name.equals(ing.itemName, ignoreCase = true) && it.amount >= ing.amount }
-        }
-    }
 
     /**
      * Generate a weekly meal plan from saved recipes.
@@ -195,7 +189,7 @@ class AppRepository(private val context: Context) {
 
                 // Score each candidate by nutrition gap fulfillment
                 val best = candidates.maxByOrNull { recipe ->
-                    nutritionGapScore(recipe.nutritionPerServing, weeklyNutrition, settings, (dayOffset + 1) * slots.size)
+                    nutritionGapScore(recipe.nutritionPerServing, weeklyNutrition, settings)
                 }
 
                 best?.let { recipe ->
@@ -233,10 +227,8 @@ class AppRepository(private val context: Context) {
     private fun nutritionGapScore(
         nutrition: NutritionInfo,
         accumulated: NutritionInfo,
-        settings: UserSettings,
-        mealsElapsed: Int
+        settings: UserSettings
     ): Double {
-        val target = settings.dailyCalories * 7.0 // rough weekly target
         val gaps = listOf(
             (settings.dailyCalories * 7 - accumulated.calories) to nutrition.calories,
             (settings.dailyProtein  * 7 - accumulated.protein)  to nutrition.protein,

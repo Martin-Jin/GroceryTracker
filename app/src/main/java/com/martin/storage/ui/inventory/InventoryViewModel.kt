@@ -6,6 +6,9 @@ import com.martin.storage.data.repository.AppRepository
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
+sealed class InventoryEvent {
+    data class DuplicateName(val name: String) : InventoryEvent()
+}
 data class InventoryUiState(
     val items: List<GroceryItem>        = emptyList(),
     val allFoodItems: List<LocalFoodItem>       = emptyList(),
@@ -17,7 +20,7 @@ data class InventoryUiState(
     val showShoppingListOnly: Boolean   = false,
     val customCategories: List<String>  = emptyList(),
     val canUndo: Boolean                = false,
-    val canRedo: Boolean                = false
+    val canRedo: Boolean                = false,
 ) {
     val allCategories: List<String>
         get() = groceryCategories + customCategories
@@ -62,6 +65,8 @@ class InventoryViewModel(private val repo: AppRepository) : ViewModel() {
 
     private val _state = MutableStateFlow(InventoryUiState())
     val state: StateFlow<InventoryUiState> = _state.asStateFlow()
+    private val _events = MutableSharedFlow<InventoryEvent>(extraBufferCapacity = 1)
+    val events: SharedFlow<InventoryEvent> = _events.asSharedFlow()
 
     private val undoRedo = UndoRedoManager<List<GroceryItem>>()
 
@@ -73,10 +78,7 @@ class InventoryViewModel(private val repo: AppRepository) : ViewModel() {
         }
         // Keep allFoodItems reactive: re-merge whenever the user saves a custom item
         viewModelScope.launch {
-            repo.localFoodItems.collect { stored ->
-                val storedNames = stored.map { it.name }.toSet()
-                val merged = (builtInFoodItems.filter { it.name !in storedNames } + stored)
-                    .sortedBy { it.displayName }
+            repo.allFoodItems.collect { merged ->
                 _state.update { it.copy(allFoodItems = merged) }
             }
         }
@@ -84,6 +86,13 @@ class InventoryViewModel(private val repo: AppRepository) : ViewModel() {
     // ── Mutations ─────────────────────────────────────────────────────────────
 
     fun upsertItem(item: GroceryItem) = viewModelScope.launch {
+        val isDuplicate = _state.value.items.any {
+            it.name.equals(item.name.trim(), ignoreCase = true) && it.id != item.id
+        }
+        if (isDuplicate) {
+            _events.emit(InventoryEvent.DuplicateName(item.name.trim()))
+            return@launch
+        }
         pushUndo()
         repo.upsertGroceryItem(item)
     }
