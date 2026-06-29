@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -180,7 +181,6 @@ fun RecipeDetailScreen(
             }
 
             if (missing.isNotEmpty()) {
-                var addedItems by remember { mutableStateOf(setOf<String>()) }
                 GlassCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Row(
@@ -195,38 +195,50 @@ fun RecipeDetailScreen(
                                 fontWeight = FontWeight.SemiBold
                             )
                         }
-                        missing.forEach { ing ->
-                            Row(
-                                Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    "• ${ing.itemName}: ${ing.amount.roundedTo1()} ${ing.unit}",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                if (ing.itemName in addedItems) {
-                                    NutrientChip(
-                                        "✓ Added",
-                                        color = TertiaryContainer.copy(.3f),
-                                        textColor = Tertiary
+                        recipe.ingredients.filter { !it.optional }.forEach { ing ->
+                            val inventoryItem = state.inventoryItems.find {
+                                it.name.equals(ing.itemName, ignoreCase = true)
+                            }
+                            val hasItem = inventoryItem != null
+                            val hasSufficient = inventoryItem != null && inventoryItem.amount >= ing.amount
+
+                            // Only show row if truly missing or insufficient
+                            if (!hasSufficient) {
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        "• ${ing.itemName}: ${ing.amount.roundedTo1()} ${ing.unit}",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        modifier = Modifier.weight(1f)
                                     )
-                                } else {
-                                    FilledTonalButton(
-                                        onClick = {
-                                            viewModel.addMissingIngredientToInventory(ing.itemName)
-                                            addedItems = addedItems + ing.itemName
-                                        },
-                                        colors = ButtonDefaults.filledTonalButtonColors(
-                                            containerColor = SecondaryContainer.copy(alpha = 0.3f),
-                                            contentColor = Secondary
-                                        ),
-                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                                    ) {
-                                        Icon(Icons.Default.Add, null, Modifier.size(14.dp))
-                                        Spacer(Modifier.width(4.dp))
-                                        Text("Add to Inventory", style = MaterialTheme.typography.labelSmall)
+                                    when {
+                                        hasItem && !hasSufficient -> {
+                                            // Has item but not enough
+                                            NutrientChip(
+                                                "Only ${inventoryItem!!.amount.roundedTo1()} ${inventoryItem.unit}",
+                                                color = SecondaryContainer.copy(.3f),
+                                                textColor = Secondary
+                                            )
+                                        }
+                                        !hasItem -> {
+                                            FilledTonalButton(
+                                                onClick = {
+                                                    viewModel.addMissingIngredientToInventory(ing.itemName)
+                                                },
+                                                colors = ButtonDefaults.filledTonalButtonColors(
+                                                    containerColor = SecondaryContainer.copy(alpha = 0.3f),
+                                                    contentColor = Secondary
+                                                ),
+                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                            ) {
+                                                Icon(Icons.Default.Add, null, Modifier.size(14.dp))
+                                                Spacer(Modifier.width(4.dp))
+                                                Text("Add to Inventory", style = MaterialTheme.typography.labelSmall)
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -379,7 +391,12 @@ fun RecipeEditScreen(
         }
     ) { padding ->
         Column(
-            Modifier.fillMaxSize().verticalScroll(scrollState).padding(padding).padding(horizontal = 20.dp, vertical = 12.dp),
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(scrollState)
+                .padding(padding)
+                .padding(horizontal = 20.dp, vertical = 12.dp)
+                .imePadding(),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             OutlinedTextField(name, { name = it }, label = { Text("Recipe Name *") }, singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
@@ -393,10 +410,15 @@ fun RecipeEditScreen(
 
             // Meal type selector
             Text("Meal Types", style = MaterialTheme.typography.labelLarge, color = OnSurfaceVariant)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 MealType.entries.forEach { type ->
                     FilterChip(
-                        "${type.emoji} ${type.label}",
+                        label = "${type.emoji} ${type.label}",
                         selected = type.name in mealTypes,
                         onClick = {
                             mealTypes = if (type.name in mealTypes) mealTypes - type.name else mealTypes + type.name
@@ -472,11 +494,9 @@ private fun IngredientEditor(
                 }
         val canAdd = ingName.isNotBlank() && ingAmount.isNotBlank() && nameMatchesDataset
 
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.Bottom
-        ) {
-            Box(Modifier.weight(2f)) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Ingredient name with autocomplete — full width
+            Box(Modifier.fillMaxWidth()) {
                 OutlinedTextField(
                     value = ingName,
                     onValueChange = { newName ->
@@ -528,50 +548,58 @@ private fun IngredientEditor(
                 }
             }
 
-            OutlinedTextField(
-                ingAmount, { ingAmount = it },
-                label = { Text("Amt") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                singleLine = true,
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(10.dp)
-            )
-            OutlinedTextField(
-                ingUnit, { ingUnit = it },
-                label = { Text("Unit") },
-                singleLine = true,
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(10.dp)
-            )
-            IconButton(
-                onClick = {
-                    if (canAdd) {
-                        onChange(
-                            ingredients + RecipeIngredient(
-                                ingName.trim(),
-                                ingAmount.toDoubleOrNull() ?: 1.0,
-                                ingUnit.trim()
-                            )
-                        )
-                        ingName = ""; ingAmount = ""; selectedFood = null
-                    }
-                },
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(if (canAdd) Primary else SurfaceContainerHigh)
+            // Amount + Unit + Add button on a separate row
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Default.Add, null, tint = if (canAdd) OnPrimary else OnSurfaceVariant)
+                OutlinedTextField(
+                    value = ingAmount,
+                    onValueChange = { ingAmount = it },
+                    label = { Text("Amount") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(10.dp)
+                )
+                OutlinedTextField(
+                    value = ingUnit,
+                    onValueChange = { ingUnit = it },
+                    label = { Text("Unit") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(10.dp)
+                )
+                IconButton(
+                    onClick = {
+                        if (canAdd) {
+                            onChange(
+                                ingredients + RecipeIngredient(
+                                    ingName.trim(),
+                                    ingAmount.toDoubleOrNull() ?: 1.0,
+                                    ingUnit.trim()
+                                )
+                            )
+                            ingName = ""; ingAmount = ""; selectedFood = null
+                        }
+                    },
+                    modifier = Modifier
+                        .size(52.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(if (canAdd) Primary else SurfaceContainerHigh)
+                ) {
+                    Icon(Icons.Default.Add, null, tint = if (canAdd) OnPrimary else OnSurfaceVariant)
+                }
             }
-        }
 
-        // Hint when typed name doesn't match any food in the dataset
-        if (ingName.isNotBlank() && allFoodItems.isNotEmpty() && !nameMatchesDataset) {
-            Text(
-                "⚠ \"$ingName\" isn't in the food dataset — select from the dropdown for nutrition tracking.",
-                style = MaterialTheme.typography.labelSmall,
-                color = Secondary
-            )
+            // Hint
+            if (ingName.isNotBlank() && allFoodItems.isNotEmpty() && !nameMatchesDataset) {
+                Text(
+                    "⚠ \"$ingName\" isn't in the food dataset — select from the dropdown for nutrition tracking.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Secondary
+                )
+            }
         }
     }
 }
@@ -601,7 +629,23 @@ private fun InstructionEditor(
             }
         }
         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            OutlinedTextField(newStep, onNewStepChange, label = { Text("New step…") }, minLines = 1, maxLines = 3, modifier = Modifier.weight(1f), shape = RoundedCornerShape(10.dp))
+
+        OutlinedTextField(
+            value = newStep,
+            onValueChange = onNewStepChange,
+            label = { Text("New step…") },
+            minLines = 1,
+            maxLines = 3,
+            modifier = Modifier.weight(1f),
+            shape = RoundedCornerShape(10.dp),
+            keyboardOptions = KeyboardOptions(
+                capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Sentences,
+                imeAction = androidx.compose.ui.text.input.ImeAction.Done
+            ),
+            keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                onDone = { onAddStep() }
+            )
+        )
             IconButton(
                 onClick = onAddStep,
                 enabled = newStep.isNotBlank(),

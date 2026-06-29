@@ -66,7 +66,6 @@ class InventoryViewModel(private val repo: AppRepository) : ViewModel() {
     private val _state = MutableStateFlow(InventoryUiState())
     val state: StateFlow<InventoryUiState> = _state.asStateFlow()
     private val _events = MutableSharedFlow<InventoryEvent>(extraBufferCapacity = 1)
-    val events: SharedFlow<InventoryEvent> = _events.asSharedFlow()
 
     private val undoRedo = UndoRedoManager<List<GroceryItem>>()
 
@@ -82,8 +81,49 @@ class InventoryViewModel(private val repo: AppRepository) : ViewModel() {
                 _state.update { it.copy(allFoodItems = merged) }
             }
         }
+
+        viewModelScope.launch {
+            repo.userSettings.collect { settings ->
+                _state.update { it.copy(customCategories = settings.customCategories) }
+            }
+        }
     }
     // ── Mutations ─────────────────────────────────────────────────────────────
+    fun upsertLocalFoodItem(item: LocalFoodItem) = viewModelScope.launch {
+        repo.upsertLocalFoodItem(item)
+    }
+
+    fun deleteLocalFoodItem(name: String) = viewModelScope.launch {
+        repo.deleteLocalFoodItem(name)
+    }
+
+    // ── Filters / Search ─────────────────────────────────────────────────────
+    fun setSearch(q: String)            = _state.update { it.copy(searchQuery = q) }
+    fun setCategory(cat: String?)       = _state.update { it.copy(selectedCategory = cat) }
+    fun clearFilters()                  = _state.update {
+        it.copy(searchQuery = "", selectedCategory = null, appliedTagFilters = emptySet(), showShoppingListOnly = false)
+    }
+    fun setSortOrder(order: SortOrder)  = _state.update { it.copy(sortOrder = order) }
+    fun toggleShoppingListOnly()        = _state.update { it.copy(showShoppingListOnly = !it.showShoppingListOnly) }
+
+    // ── Tag filters ───────────────────────────────────────────────────────────
+    fun applyTagFilter(tag: String)  = _state.update { it.copy(appliedTagFilters = it.appliedTagFilters + tag) }
+    fun removeTagFilter(tag: String) = _state.update { it.copy(appliedTagFilters = it.appliedTagFilters - tag) }
+
+    // ── Category management ───────────────────────────────────────────────────
+
+    fun addCategory(name: String)          = viewModelScope.launch { repo.addCustomCategory(name) }
+    fun removeCustomCategory(name: String) = viewModelScope.launch { repo.removeCustomCategory(name) }
+
+    fun renameCategory(old: String, new: String) = viewModelScope.launch {
+        repo.renameCustomCategory(old, new)
+    }
+
+    // ── Undo / Redo ───────────────────────────────────────────────────────────
+    private fun pushUndo() {
+        undoRedo.push(_state.value.items.toList())
+        _state.update { it.copy(canUndo = undoRedo.canUndo, canRedo = undoRedo.canRedo) }
+    }
 
     fun upsertItem(item: GroceryItem) = viewModelScope.launch {
         val isDuplicate = _state.value.items.any {
@@ -98,44 +138,16 @@ class InventoryViewModel(private val repo: AppRepository) : ViewModel() {
     }
 
     fun deleteItem(id: String) = viewModelScope.launch {
-        pushUndo()
+        // Snapshot CURRENT confirmed list from repo before deleting
+        val current = _state.value.items.toList()
+        undoRedo.push(current)
+        _state.update { it.copy(canUndo = undoRedo.canUndo, canRedo = undoRedo.canRedo) }
         repo.deleteGroceryItem(id)
     }
 
     fun adjustAmount(id: String, delta: Double) = viewModelScope.launch {
         pushUndo()
         repo.adjustAmount(id, delta)
-    }
-
-    fun upsertLocalFoodItem(item: LocalFoodItem) = viewModelScope.launch {
-        repo.upsertLocalFoodItem(item)
-    }
-
-    // ── Filters / Search ─────────────────────────────────────────────────────
-
-    fun setSearch(q: String)            = _state.update { it.copy(searchQuery = q) }
-    fun setCategory(cat: String?)       = _state.update { it.copy(selectedCategory = cat) }
-    fun clearFilters()                  = _state.update {
-        it.copy(searchQuery = "", selectedCategory = null, appliedTagFilters = emptySet(), showShoppingListOnly = false)
-    }
-    fun setSortOrder(order: SortOrder)  = _state.update { it.copy(sortOrder = order) }
-    fun toggleShoppingListOnly()        = _state.update { it.copy(showShoppingListOnly = !it.showShoppingListOnly) }
-
-    // ── Tag filters ───────────────────────────────────────────────────────────
-
-    fun applyTagFilter(tag: String)  = _state.update { it.copy(appliedTagFilters = it.appliedTagFilters + tag) }
-    fun removeTagFilter(tag: String) = _state.update { it.copy(appliedTagFilters = it.appliedTagFilters - tag) }
-
-    // ── Category management ───────────────────────────────────────────────────
-
-    fun addCategory(name: String)          = viewModelScope.launch { repo.addCustomCategory(name) }
-    fun removeCustomCategory(name: String) = viewModelScope.launch { repo.removeCustomCategory(name) }
-
-    // ── Undo / Redo ───────────────────────────────────────────────────────────
-
-    private fun pushUndo() {
-        undoRedo.push(_state.value.items)
-        _state.update { it.copy(canUndo = undoRedo.canUndo, canRedo = undoRedo.canRedo) }
     }
 
     fun undo() = viewModelScope.launch {

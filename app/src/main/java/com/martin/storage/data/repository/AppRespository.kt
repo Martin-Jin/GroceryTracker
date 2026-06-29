@@ -15,7 +15,6 @@ import kotlinx.coroutines.flow.map
 class AppRepository(private val context: Context) {
 
     // ── Grocery Items ────────────────────────────────────────────────────────
-
     val groceryItems: Flow<List<GroceryItem>> = context.loadList(DataKeys.GROCERY_ITEMS)
 
     suspend fun saveGroceryItems(items: List<GroceryItem>) =
@@ -42,6 +41,31 @@ class AppRepository(private val context: Context) {
         })
     }
 
+    suspend fun deleteLocalFoodItem(name: String) {
+        val stored = (localFoodItems.firstOrNull() ?: emptyList())
+            .filter { it.name != name }
+        context.saveList(DataKeys.LOCAL_FOOD_ITEMS, stored)
+    }
+
+    // ── Categories and tags ──────────────────────────────────────────────────────────────
+    suspend fun renameCustomRecipeTag(old: String, new: String) {
+        val current = customRecipeTags.firstOrNull() ?: emptyList()
+        if (new.isBlank() || new == old) return
+        context.saveList(
+            DataKeys.CUSTOM_RECIPE_TAGS,
+            current.map { if (it == old) new else it }
+        )
+    }
+
+    suspend fun renameCustomCategory(old: String, new: String) {
+        val settings = userSettings.firstOrNull() ?: UserSettings()
+        if (new.isBlank() || new == old) return
+        saveUserSettings(
+            settings.copy(
+                customCategories = settings.customCategories.map { if (it == old) new else it }
+            )
+        )
+    }
     // ── Recipes ──────────────────────────────────────────────────────────────
 
     val recipes: Flow<List<Recipe>> = context.loadList(DataKeys.RECIPES)
@@ -133,6 +157,19 @@ class AppRepository(private val context: Context) {
     // ── Local Food Dataset ────────────────────────────────────────────────────────
 
     val localFoodItems: Flow<List<LocalFoodItem>> = context.loadList(DataKeys.LOCAL_FOOD_ITEMS)
+    val customRecipeTags: Flow<List<String>> = context.loadList(DataKeys.CUSTOM_RECIPE_TAGS)
+
+    suspend fun addCustomRecipeTag(name: String) {
+        val current = customRecipeTags.firstOrNull() ?: emptyList()
+        if (name.isNotBlank() && name !in current) {
+            context.saveList(DataKeys.CUSTOM_RECIPE_TAGS, current + name)
+        }
+    }
+
+    suspend fun removeCustomRecipeTag(name: String) {
+        val current = customRecipeTags.firstOrNull() ?: emptyList()
+        context.saveList(DataKeys.CUSTOM_RECIPE_TAGS, current.filter { it != name })
+    }
     // Add to AppRepository, after the localFoodItems flow declaration:
     val allFoodItems: Flow<List<LocalFoodItem>> = localFoodItems.map { stored ->
         val storedNames = stored.map { it.name }.toSet()

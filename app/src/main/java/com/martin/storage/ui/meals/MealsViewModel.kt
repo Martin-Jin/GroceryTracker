@@ -21,6 +21,8 @@ data class MealsUiState(
     val canUndo: Boolean                   = false,
     val canRedo: Boolean                   = false,
     val allFoodItems: List<LocalFoodItem>      = emptyList(),
+    val selectedTag: String? = null,
+    val customRecipeTags: List<String>     = emptyList(),   // ← ADD
 ) {
     val allRecipeTags: List<String>
         get() = recipes.flatMap { it.tags }.distinct().sorted()
@@ -30,6 +32,9 @@ data class MealsUiState(
             var list = recipes
             if (searchQuery.isNotBlank()) list = list.filter { it.name.contains(searchQuery, ignoreCase = true) }
             if (selectedMealType != null) list = list.filter { it.mealTypes.contains(selectedMealType) }
+            if (selectedTag != null) list = list.filter { recipe ->
+                recipe.tags.any { it.equals(selectedTag, ignoreCase = true) }
+            }
             if (appliedTagFilters.isNotEmpty()) list = list.filter { recipe ->
                 appliedTagFilters.all { filterTag ->
                     recipe.tags.any { it.equals(filterTag, ignoreCase = true) }
@@ -72,6 +77,13 @@ class MealsViewModel(private val repo: AppRepository) : ViewModel() {
                 ) }
             }.collect()
         }
+
+        // Add a new launch block in init {}
+        viewModelScope.launch {
+            repo.customRecipeTags.collect { tags ->
+                _state.update { it.copy(customRecipeTags = tags) }
+            }
+        }
         // Keep allFoodItems reactive: reflects user edits to the local food dataset
         viewModelScope.launch {
             repo.allFoodItems.collect { merged ->
@@ -81,7 +93,19 @@ class MealsViewModel(private val repo: AppRepository) : ViewModel() {
     }
 
     // ── Recipe CRUD ───────────────────────────────────────────────────────────
+    fun setTagFilter(tag: String?) = _state.update { it.copy(selectedTag = tag) }
 
+    fun addCustomRecipeTag(name: String) = viewModelScope.launch {
+        repo.addCustomRecipeTag(name)
+    }
+
+    fun removeCustomRecipeTag(name: String) = viewModelScope.launch {
+        repo.removeCustomRecipeTag(name)
+    }
+
+    fun renameCustomRecipeTag(old: String, new: String) = viewModelScope.launch {
+        repo.renameCustomRecipeTag(old, new)
+    }
     fun upsertRecipe(recipe: Recipe) = viewModelScope.launch {
         undoRedoRecipes.push(_state.value.recipes)
         repo.upsertRecipe(recipe)
@@ -154,6 +178,11 @@ class MealsViewModel(private val repo: AppRepository) : ViewModel() {
 
     /** Adds a missing ingredient to inventory with amount = 0 (flags it as out-of-stock / shopping list). */
     fun addMissingIngredientToInventory(ingredientName: String) = viewModelScope.launch {
+        val items = _state.value.inventoryItems
+        // Only add if not already present
+        val alreadyExists = items.any { it.name.equals(ingredientName, ignoreCase = true) }
+        if (alreadyExists) return@launch
+
         val foodItem = repo.getAllFoodItems().find {
             it.name.equals(ingredientName, ignoreCase = true) ||
                     it.displayName.equals(ingredientName, ignoreCase = true)

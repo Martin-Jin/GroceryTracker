@@ -2,6 +2,8 @@ package com.martin.storage.ui.meals
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,6 +23,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
@@ -46,20 +49,22 @@ import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.TabRowDefaults
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -84,6 +89,8 @@ import com.martin.storage.data.model.Recipe
 import com.martin.storage.data.model.sampleRecipes
 import com.martin.storage.data.model.todayDateStr
 import com.martin.storage.data.repository.AppRepository
+import com.martin.storage.ui.components.AddCategoryDialog
+import com.martin.storage.ui.components.EditCategoryDialog
 import com.martin.storage.ui.components.EmptyState
 import com.martin.storage.ui.components.FilterChip
 import com.martin.storage.ui.components.GlassCard
@@ -98,6 +105,7 @@ import com.martin.storage.ui.theme.PrimaryContainer
 import com.martin.storage.ui.theme.Secondary
 import com.martin.storage.ui.theme.SecondaryContainer
 import com.martin.storage.ui.theme.Surface
+import com.martin.storage.ui.theme.SurfaceContainerHigh
 import com.martin.storage.ui.theme.SurfaceContainerLowest
 import com.martin.storage.ui.theme.Tertiary
 import com.martin.storage.ui.theme.TertiaryContainer
@@ -144,13 +152,13 @@ fun MealsScreen(
                         }
                     }
                 }
-                TabRow(
+                SecondaryTabRow(
                     selectedTabIndex = pagerState.currentPage,
                     containerColor = Color.Transparent,
                     contentColor = Primary,
-                    indicator = { tabs ->
+                    indicator = {
                         TabRowDefaults.SecondaryIndicator(
-                            Modifier.tabIndicatorOffset(tabs[pagerState.currentPage]),
+                            modifier = Modifier.tabIndicatorOffset(pagerState.currentPage, matchContentSize = false),
                             color = Primary
                         )
                     }
@@ -159,7 +167,12 @@ fun MealsScreen(
                         Tab(
                             selected = pagerState.currentPage == idx,
                             onClick = { scope.launch { pagerState.animateScrollToPage(idx) } },
-                            text = { Text(title, fontWeight = if (pagerState.currentPage == idx) FontWeight.SemiBold else FontWeight.Normal) },
+                            text = {
+                                Text(
+                                    title,
+                                    fontWeight = if (pagerState.currentPage == idx) FontWeight.SemiBold else FontWeight.Normal
+                                )
+                            },
                             selectedContentColor = Primary,
                             unselectedContentColor = OnSurfaceVariant
                         )
@@ -202,9 +215,13 @@ fun MealsScreen(
                     },
                     onSearchChange = viewModel::setSearch,
                     onFilterMealType = viewModel::setMealTypeFilter,
+                    onTagFilter = viewModel::setTagFilter,
+                    onAddCustomTag = viewModel::addCustomRecipeTag,
+                    onRemoveCustomTag = viewModel::removeCustomRecipeTag,
                     onTagApplied = viewModel::applyTagFilter,
                     onTagRemoved = viewModel::removeTagFilter,
-                    canMake = viewModel::canMakeRecipe
+                    canMake = viewModel::canMakeRecipe,
+                    onRenameCustomTag = viewModel::renameCustomRecipeTag,
                 )
                 1 -> MealPlanTab(
                     state = state,
@@ -216,7 +233,6 @@ fun MealsScreen(
                         }
                     },
                     onGenerate = viewModel::generateWeeklyPlan,
-                    onClear = viewModel::clearWeekPlan,
                     onAddEntry = { entry -> viewModel.addMealPlanEntry(entry) },
                     recipes = state.recipes
                 )
@@ -241,12 +257,17 @@ private fun RecipesTab(
     onCookNow: (Recipe) -> Unit,
     onSearchChange: (String) -> Unit,
     onFilterMealType: (String?) -> Unit,
+    onTagFilter: (String?) -> Unit,
+    onAddCustomTag: (String) -> Unit,
+    onRemoveCustomTag: (String) -> Unit,
+    onRenameCustomTag: (String, String) -> Unit,
     onTagApplied: (String) -> Unit,
     onTagRemoved: (String) -> Unit,
     canMake: (Recipe) -> Boolean
 ) {
+    var showAddTagDialog by remember { mutableStateOf(false) }
+
     Column(Modifier.fillMaxSize()) {
-        // Search
         TagAwareSearchBar(
             textQuery = state.searchQuery,
             onTextQueryChange = onSearchChange,
@@ -257,20 +278,139 @@ private fun RecipesTab(
             placeholder = "Search recipes…",
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp)
         )
-        // Meal type filter
+
+        // Combined meal type + custom category filter row
         Row(
-            Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            FilterChip("All", state.selectedMealType == null, { onFilterMealType(null) })
+            // Built-in: All
+            FilterChip(
+                "All",
+                state.selectedMealType == null && state.selectedTag == null,
+                onClick = {
+                    onFilterMealType(null)
+                    onTagFilter(null)
+                })
+
+            // Built-in meal types
             MealType.entries.forEach { type ->
-                FilterChip("${type.emoji} ${type.label}", state.selectedMealType == type.name, { onFilterMealType(type.name) })
+                FilterChip(
+                    "${type.emoji} ${type.label}",
+                    state.selectedMealType == type.name,
+                    onClick = {
+                        onFilterMealType(if (state.selectedMealType == type.name) null else type.name)
+                        onTagFilter(null)
+                    })
+            }
+
+            // Custom tags — long press to delete
+            state.customRecipeTags.forEach { tag ->
+                var showDeleteDialog by remember { mutableStateOf(false) }
+                var showEditDialog by remember { mutableStateOf(false) }
+
+                val isSelected = state.selectedTag == tag
+                val bg = if (isSelected) Primary else SurfaceContainerHigh
+                val textColor = if (isSelected) OnPrimary else OnSurfaceVariant
+
+                Box {
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(100.dp))
+                            .background(bg)
+                            .combinedClickable(
+                                onLongClick = { showDeleteDialog = true },
+                                onClick = {
+                                    onFilterMealType(null)
+                                    onTagFilter(if (isSelected) null else tag)
+                                }
+                            )
+                            .padding(start = 14.dp, end = 6.dp, top = 7.dp, bottom = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            tag,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = textColor
+                        )
+                        Box(
+                            modifier = Modifier
+                                .size(18.dp)
+                                .clip(CircleShape)
+                                .background(textColor.copy(alpha = 0.15f))
+                                .clickable { showEditDialog = true },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Outlined.Edit,
+                                contentDescription = "Rename $tag",
+                                tint = textColor,
+                                modifier = Modifier.size(10.dp)
+                            )
+                        }
+                    }
+
+                    if (showDeleteDialog) {
+                        AlertDialog(
+                            onDismissRequest = { showDeleteDialog = false },
+                            title = { Text("Remove Category?") },
+                            text = { Text("Remove \"$tag\" from recipe categories?") },
+                            confirmButton = {
+                                TextButton(onClick = {
+                                    onRemoveCustomTag(tag)
+                                    showDeleteDialog = false
+                                }) { Text("Remove", color = Error) }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { showDeleteDialog = false }) { Text("Cancel") }
+                            }
+                        )
+                    }
+
+                    if (showEditDialog) {
+                        EditCategoryDialog(
+                            current = tag,
+                            onSave = { newName ->
+                                onRenameCustomTag(tag, newName)
+                                showEditDialog = false
+                            },
+                            onDismiss = { showEditDialog = false }
+                        )
+                    }
+                }
+            }
+
+            // Add category button
+            FilledTonalIconButton(
+                onClick = { showAddTagDialog = true },
+                modifier = Modifier.size(32.dp),
+                colors = IconButtonDefaults.filledTonalIconButtonColors(containerColor = SurfaceContainerHigh)
+            ) {
+                Icon(
+                    Icons.Default.Add,
+                    "Add category",
+                    modifier = Modifier.size(16.dp),
+                    tint = Primary
+                )
             }
         }
 
         if (state.filteredRecipes.isEmpty()) {
             EmptyState(
-                icon = { Icon(Icons.AutoMirrored.Outlined.MenuBook, null, Modifier.size(36.dp), tint = OnSurfaceVariant) },
+                icon = {
+                    Icon(
+                        Icons.AutoMirrored.Outlined.MenuBook,
+                        null,
+                        Modifier.size(36.dp),
+                        tint = OnSurfaceVariant
+                    )
+                },
                 title = "No Recipes",
                 subtitle = "Add recipes to plan your meals",
                 modifier = Modifier.fillMaxSize()
@@ -293,6 +433,13 @@ private fun RecipesTab(
                 item { Spacer(Modifier.height(80.dp)) }
             }
         }
+    }
+
+    if (showAddTagDialog) {
+        AddCategoryDialog(
+            onAdd = { onAddCustomTag(it); showAddTagDialog = false },
+            onDismiss = { showAddTagDialog = false }
+        )
     }
 }
 
@@ -385,7 +532,6 @@ private fun MealPlanTab(
     state: MealsUiState,
     onRemoveEntry: (String) -> Unit,
     onGenerate: () -> Unit,
-    onClear: () -> Unit,
     onAddEntry: (MealPlanEntry) -> Unit,
     recipes: List<Recipe>
 ) {

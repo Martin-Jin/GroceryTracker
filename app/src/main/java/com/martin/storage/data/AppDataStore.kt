@@ -27,6 +27,7 @@ object DataKeys {
     val PREPARED_MEALS  = stringPreferencesKey("prepared_meals")
     val USER_SETTINGS   = stringPreferencesKey("user_settings")
     val LOCAL_FOOD_ITEMS = stringPreferencesKey("local_food_items")
+    val CUSTOM_RECIPE_TAGS = stringPreferencesKey("custom_recipe_tags")
 }
 
 suspend inline fun <reified T> Context.saveList(key: Preferences.Key<String>, items: List<T>) {

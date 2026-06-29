@@ -24,10 +24,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -37,6 +37,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -48,6 +49,7 @@ import androidx.compose.material.icons.filled.Camera
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material.icons.outlined.Science
 import androidx.compose.material.icons.outlined.Settings
@@ -142,6 +144,8 @@ import com.martin.storage.ui.theme.SurfaceContainerLowest
 import com.martin.storage.ui.theme.Tertiary
 import com.martin.storage.ui.theme.TertiaryContainer
 import com.martin.storage.ui.theme.VitalityFluxTheme
+import com.martin.storage.ui.components.AddCategoryDialog
+import com.martin.storage.ui.components.EditCategoryDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -155,14 +159,20 @@ fun InventoryScreen(
     var showAddSheet by remember { mutableStateOf(false) }
     var editingItem by remember { mutableStateOf<GroceryItem?>(null) }
     var showSortSheet by remember { mutableStateOf(false) }
+    var pendingDelete by remember { mutableStateOf<GroceryItem?>(null) }
 
-    LaunchedEffect(Unit) {
-        viewModel.events.collect { event ->
-            when (event) {
-                is InventoryEvent.DuplicateName ->
-                    snackbarHostState.showSnackbar("\"${event.name}\" is already in your inventory")
-            }
+    LaunchedEffect(pendingDelete) {
+        val item = pendingDelete ?: return@LaunchedEffect
+        viewModel.deleteItem(item.id)
+        val result = snackbarHostState.showSnackbar(
+            message = "${item.name} deleted",
+            actionLabel = "Undo",
+            duration = SnackbarDuration.Short
+        )
+        if (result == SnackbarResult.ActionPerformed) {
+            viewModel.undo()
         }
+        pendingDelete = null
     }
 
     val context = LocalContext.current
@@ -266,6 +276,7 @@ fun InventoryScreen(
                     showShoppingOnly = state.showShoppingListOnly,
                     onToggleShoppingOnly = viewModel::toggleShoppingListOnly,
                     onAddCategory = viewModel::addCategory,
+                    onRenameCategory = viewModel::renameCategory,
                     onRemoveCategory = viewModel::removeCustomCategory,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
@@ -302,14 +313,16 @@ fun InventoryScreen(
                 items(state.filtered, key = { it.id }) { item ->
                     val dismissState = rememberSwipeToDismissBoxState()
 
+                    // Reset swipe state if item reappears (e.g. after undo)
+                    LaunchedEffect(item.id) {
+                        if (dismissState.currentValue != SwipeToDismissBoxValue.Settled) {
+                            dismissState.snapTo(SwipeToDismissBoxValue.Settled)
+                        }
+                    }
+
                     LaunchedEffect(dismissState.currentValue) {
                         if (dismissState.currentValue == SwipeToDismissBoxValue.EndToStart) {
-                            viewModel.deleteItem(item.id)
-                            val result = snackbarHostState.showSnackbar(
-                                "${item.name} deleted", "Undo",
-                                duration = SnackbarDuration.Short
-                            )
-                            if (result == SnackbarResult.ActionPerformed) viewModel.undo()
+                            pendingDelete = item
                         }
                     }
 
@@ -358,8 +371,10 @@ fun InventoryScreen(
         GroceryItemSheet(
             item = editingItem,
             allFoodItems = state.allFoodItems,
+            allCategories = state.allCategories,
             onSave = { viewModel.upsertItem(it); showAddSheet = false; editingItem = null },
             onUpsertFoodItem = { viewModel.upsertLocalFoodItem(it) },
+            onDeleteFoodItem = { viewModel.deleteLocalFoodItem(it) },
             onDismiss = { showAddSheet = false; editingItem = null }
         )
     }
@@ -384,6 +399,7 @@ private fun CategoryFilterRow(
     showShoppingOnly: Boolean,
     onToggleShoppingOnly: () -> Unit,
     onAddCategory: (String) -> Unit,
+    onRenameCategory: (String, String) -> Unit,   // ← ADD
     onRemoveCategory: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -406,32 +422,47 @@ private fun CategoryFilterRow(
         allCategories.forEach { cat ->
             val isCustom = cat in customCategories
             var showDeleteDialog by remember { mutableStateOf(false) }
+            var showEditDialog by remember { mutableStateOf(false) }
+
+            val isSelected = selectedCategory == cat
+            val bg = if (isSelected) Primary else SurfaceContainerHigh
+            val textColor = if (isSelected) OnPrimary else OnSurfaceVariant
 
             Box {
-                val bg = if (selectedCategory == cat) Primary else SurfaceContainerHigh
-                val textColor = if (selectedCategory == cat) OnPrimary else OnSurfaceVariant
-
                 Row(
                     modifier = Modifier
                         .clip(RoundedCornerShape(100.dp))
                         .background(bg)
                         .combinedClickable(
                             onLongClick = { if (isCustom) showDeleteDialog = true },
-                            onClick = { onCategorySelected(if (selectedCategory == cat) null else cat) }
+                            onClick = { onCategorySelected(if (isSelected) null else cat) }
                         )
-                        .padding(horizontal = 14.dp, vertical = 7.dp),
+                        .padding(start = 14.dp, end = if (isCustom) 6.dp else 14.dp, top = 7.dp, bottom = 7.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Text(cat, style = MaterialTheme.typography.labelMedium, color = textColor)
-                    // Subtle dot to indicate custom (deletable) category
+                    Text(
+                        cat,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = textColor
+                    )
+                    // Edit pen inside the pill for custom categories
                     if (isCustom) {
                         Box(
                             modifier = Modifier
-                                .size(5.dp)
-                                .clip(androidx.compose.foundation.shape.CircleShape)
-                                .background(textColor.copy(alpha = 0.5f))
-                        )
+                                .size(18.dp)
+                                .clip(CircleShape)
+                                .background(textColor.copy(alpha = 0.15f))
+                                .clickable { showEditDialog = true },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Outlined.Edit,
+                                contentDescription = "Rename $cat",
+                                tint = textColor,
+                                modifier = Modifier.size(10.dp)
+                            )
+                        }
                     }
                 }
 
@@ -451,10 +482,20 @@ private fun CategoryFilterRow(
                         }
                     )
                 }
+
+                if (showEditDialog) {
+                    EditCategoryDialog(
+                        current = cat,
+                        onSave = { newName ->
+                            onRenameCategory(cat, newName)
+                            showEditDialog = false
+                        },
+                        onDismiss = { showEditDialog = false }
+                    )
+                }
             }
         }
 
-        // Add category button
         FilledTonalIconButton(
             onClick = { showAddDialog = true },
             modifier = Modifier.size(32.dp),
@@ -471,33 +512,6 @@ private fun CategoryFilterRow(
         )
     }
 }
-
-@Composable
-private fun AddCategoryDialog(onAdd: (String) -> Unit, onDismiss: () -> Unit) {
-    var text by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("New Category") },
-        text = {
-            OutlinedTextField(
-                value = text,
-                onValueChange = { text = it },
-                label = { Text("Category name") },
-                singleLine = true,
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth()
-            )
-        },
-        confirmButton = {
-            TextButton(
-                onClick = { if (text.isNotBlank()) onAdd(text.trim()) },
-                enabled = text.isNotBlank()
-            ) { Text("Add", color = if (text.isNotBlank()) Primary else OnSurfaceVariant) }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
-    )
-}
-
 // ── Grocery List Item ─────────────────────────────────────────────────────────
 @Composable
 private fun GroceryListItem(
@@ -512,8 +526,8 @@ private fun GroceryListItem(
     ) {
         Row(
             modifier = Modifier
-                .padding(horizontal = 14.dp, vertical = 10.dp)
-                .defaultMinSize(minHeight = 72.dp),
+                .padding(horizontal = 14.dp, vertical = 5.dp)
+                .heightIn(min = 65.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
@@ -611,15 +625,17 @@ private fun SortBottomSheet(
 fun GroceryItemSheet(
     item: GroceryItem?,
     allFoodItems: List<LocalFoodItem>,
+    allCategories: List<String>,
     onSave: (GroceryItem) -> Unit,
     onUpsertFoodItem: (LocalFoodItem) -> Unit,
+    onDeleteFoodItem: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
     var name        by remember(item) { mutableStateOf(item?.name ?: "") }
     var amount      by remember(item) { mutableStateOf(item?.amount?.toString() ?: "1") }
     var unit        by remember(item) { mutableStateOf(item?.unit ?: "units") }
     var category    by remember(item) { mutableStateOf(item?.category ?: "General") }
-    var tagsRaw     by remember(item) { mutableStateOf(item?.tags?.joinToString(", ") ?: "") }
+    var tagsRaw     by remember(item) { mutableStateOf(item?.tags?.joinToString(", ") ?: "No tag") }
     var expiryDate  by remember(item) { mutableStateOf(item?.expiryDate ?: "") }
     var threshold   by remember(item) { mutableStateOf(item?.lowStockThreshold?.toString() ?: "1") }
     var notes       by remember(item) { mutableStateOf(item?.notes ?: "") }
@@ -672,18 +688,45 @@ fun GroceryItemSheet(
                 DropdownMenu(
                     expanded = showNameSuggestions,
                     onDismissRequest = { showNameSuggestions = false },
-                    properties = PopupProperties(focusable = false)   // ← KEY FIX
+                    properties = PopupProperties(focusable = false)
                 ) {
+                    // Built-in food names that cannot be deleted
+                    val builtInNames = remember {
+                        com.martin.storage.data.model.builtInFoodItems.map { it.name }.toSet()
+                    }
                     nameSuggestions.forEach { food ->
+                        val isUserAdded = food.name !in builtInNames
+                        var showDeleteConfirm by remember { mutableStateOf(false) }
+
                         DropdownMenuItem(
                             text = {
-                                Column {
-                                    Text(food.displayName, style = MaterialTheme.typography.bodyMedium)
-                                    Text(
-                                        food.category + if (food.tags.isNotEmpty()) " · ${food.tags.take(2).joinToString(", ")}" else "",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = OnSurfaceVariant
-                                    )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(food.displayName, style = MaterialTheme.typography.bodyMedium)
+                                        Text(
+                                            food.category + if (food.tags.isNotEmpty()) " · ${food.tags.take(2).joinToString(", ")}" else "",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = OnSurfaceVariant
+                                        )
+                                    }
+                                    // Only show delete button for user-added items
+                                    if (isUserAdded) {
+                                        IconButton(
+                                            onClick = { showDeleteConfirm = true },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Close,
+                                                contentDescription = "Remove ${food.displayName} from autofill",
+                                                tint = Error,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
                                 }
                             },
                             onClick = {
@@ -697,6 +740,24 @@ fun GroceryItemSheet(
                                 showNameSuggestions = false
                             }
                         )
+
+                        if (showDeleteConfirm) {
+                            AlertDialog(
+                                onDismissRequest = { showDeleteConfirm = false },
+                                title = { Text("Remove from Autofill?") },
+                                text = { Text("\"${food.displayName}\" will be removed from suggestions. Any existing inventory items using this name are unaffected.") },
+                                confirmButton = {
+                                    TextButton(onClick = {
+                                        onDeleteFoodItem(food.name)
+                                        showDeleteConfirm = false
+                                        showNameSuggestions = false
+                                    }) { Text("Remove", color = Error) }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel") }
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -743,7 +804,7 @@ fun GroceryItemSheet(
                     shape = RoundedCornerShape(12.dp)
                 )
                 ExposedDropdownMenu(expanded = catExpanded, onDismissRequest = { catExpanded = false }) {
-                    groceryCategories.forEach { cat ->
+                    allCategories.forEach { cat ->
                         DropdownMenuItem(text = { Text(cat) }, onClick = { category = cat; catExpanded = false })
                     }
                 }
