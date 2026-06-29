@@ -125,7 +125,7 @@ fun RecipeDetailScreen(
                 InfoChip("⏱ ${recipe.prepTimeMinutes + recipe.cookTimeMinutes} min")
                 InfoChip("👤 ${recipe.servings} servings")
                 NutrientChip(
-                    if (canMake) "✓ Ready to Cook" else "⚠ Missing ${missing.size}",
+                    label = if (canMake) "✓ Ready to Cook" else "⚠ Missing ${missing.size}",
                     color = if (canMake) TertiaryContainer.copy(.3f) else SecondaryContainer.copy(.3f),
                     textColor = if (canMake) Tertiary else Secondary
                 )
@@ -137,7 +137,7 @@ fun RecipeDetailScreen(
 
             if (recipe.tags.isNotEmpty()) {
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    recipe.tags.forEach { tag -> NutrientChip(tag) }
+                    recipe.tags.forEach { tag -> NutrientChip(label = tag) }
                 }
             }
 
@@ -155,7 +155,7 @@ fun RecipeDetailScreen(
             }
 
             // Ingredients
-            SectionHeader("Ingredients")
+            SectionHeader(title = "Ingredients")
             GlassCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     recipe.ingredients.forEach { ing ->
@@ -218,7 +218,7 @@ fun RecipeDetailScreen(
                                         hasItem && !hasSufficient -> {
                                             // Has item but not enough
                                             NutrientChip(
-                                                "Only ${inventoryItem!!.amount.roundedTo1()} ${inventoryItem.unit}",
+                                                label = "Only ${inventoryItem!!.amount.roundedTo1()} ${inventoryItem.unit}",
                                                 color = SecondaryContainer.copy(.3f),
                                                 textColor = Secondary
                                             )
@@ -249,7 +249,7 @@ fun RecipeDetailScreen(
 
             // Instructions
             if (recipe.instructions.isNotEmpty()) {
-                SectionHeader("Instructions")
+                SectionHeader(title = "Instructions")
                 recipe.instructions.forEachIndexed { idx, step ->
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Box(
@@ -430,13 +430,13 @@ fun RecipeEditScreen(
             OutlinedTextField(tagsRaw, { tagsRaw = it }, label = { Text("Tags (comma-separated)") }, singleLine = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
 
             // Ingredients
-            SectionHeader("Ingredients", trailingContent = {
+            SectionHeader(title = "Ingredients", trailingContent = {
                 Text("${ingredients.size} added", style = MaterialTheme.typography.labelMedium, color = OnSurfaceVariant)
             })
             IngredientEditor(ingredients = ingredients, allFoodItems = state.allFoodItems, onChange = { ingredients = it })
 
             // Instructions
-            SectionHeader("Instructions", trailingContent = {
+            SectionHeader(title = "Instructions", trailingContent = {
                 Text("${instructions.size} steps", style = MaterialTheme.typography.labelMedium, color = OnSurfaceVariant)
             })
             InstructionEditor(instructions = instructions, newStep = newStep, onNewStepChange = { newStep = it }, onChange = { instructions = it }, onAddStep = {
@@ -664,9 +664,9 @@ private fun RecipeDetailPreview() {
         Column(Modifier.background(Surface).fillMaxSize().padding(20.dp)) {
             Text(sampleRecipes[0].name, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = Primary)
             Spacer(Modifier.height(12.dp))
-            NutrientBar("Protein", sampleRecipes[0].nutritionPerServing.protein, 150.0, Tertiary, "g")
+            NutrientBar(label = "Protein", current = sampleRecipes[0].nutritionPerServing.protein, target = 150.0, color = Tertiary, unit = "g")
             Spacer(Modifier.height(8.dp))
-            NutrientBar("Calories", sampleRecipes[0].nutritionPerServing.calories, 600.0, Primary, "kcal")
+            NutrientBar(label = "Calories", current = sampleRecipes[0].nutritionPerServing.calories, target = 600.0, color = Primary, unit = "kcal")
         }
     }
 }

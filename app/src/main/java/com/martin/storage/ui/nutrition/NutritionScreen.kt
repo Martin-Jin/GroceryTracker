@@ -120,11 +120,11 @@ fun NutritionScreen(
                 CalorieSummaryCard(state)
 
                 // Macros
-                SectionHeader("Macros")
+                SectionHeader(title = "Macros")
                 MacroCard(state)
 
                 // Micronutrients
-                SectionHeader("Micronutrients")
+                SectionHeader(title = "Micronutrients")
                 MicroNutrientGrid(state)
 
                 // Smart suggestions
@@ -180,7 +180,7 @@ private fun CalorieSummaryCard(state: NutritionUiState) {
                     color = OnSurface
                 )
                 NutrientChip(
-                    "${remaining.roundToInt()} kcal remaining",
+                    label = "${remaining.roundToInt()} kcal remaining",
                     color = PrimaryContainer.copy(.25f),
                     textColor = OnPrimaryContainer
                 )
@@ -196,10 +196,10 @@ private fun CalorieSummaryCard(state: NutritionUiState) {
 private fun MacroCard(state: NutritionUiState) {
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            NutrientBar("Protein", state.accumulated.protein, state.periodTarget.protein, Tertiary, "g")
-            NutrientBar("Carbohydrates", state.accumulated.carbs, state.periodTarget.carbs, Secondary, "g")
-            NutrientBar("Fat", state.accumulated.fat, state.periodTarget.fat, OnSurfaceVariant, "g")
-            NutrientBar("Fibre", state.accumulated.fiber, state.periodTarget.fiber, Primary, "g")
+            NutrientBar(label = "Protein", current = state.accumulated.protein, target = state.periodTarget.protein, color = Tertiary, unit = "g")
+            NutrientBar(label = "Carbohydrates", current = state.accumulated.carbs, target = state.periodTarget.carbs, color = Secondary, unit = "g")
+            NutrientBar(label = "Fat", current = state.accumulated.fat, target = state.periodTarget.fat, color = OnSurfaceVariant, unit = "g")
+            NutrientBar(label = "Fibre", current = state.accumulated.fiber, target = state.periodTarget.fiber, color = Primary, unit = "g")
         }
     }
 }
@@ -342,7 +342,7 @@ private fun SuggestionCard(suggestion: SuggestionData) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("${item.amount.roundedTo1()} ${item.unit} in stock", style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariant)
                         NutrientChip(
-                            amount.roundedTo1(),
+                            label = amount.roundedTo1(),
                             color = suggestion.color.copy(.15f),
                             textColor = suggestion.color
                         )

@@ -117,10 +117,10 @@ fun GlassCard(
 
 @Composable
 fun NutrientChip(
+    modifier: Modifier = Modifier,
     label: String,
     color: Color = PrimaryContainer,
     textColor: Color = OnPrimaryContainer,
-    modifier: Modifier = Modifier
 ) {
     Box(
         modifier = modifier
@@ -222,12 +222,12 @@ fun EditCategoryDialog(
 
 @Composable
 fun NutrientBar(
+    modifier: Modifier = Modifier,
     label: String,
     current: Double,
     target: Double,
     color: Color = Primary,
     unit: String = "g",
-    modifier: Modifier = Modifier
 ) {
     val pct = if (target > 0) (current / target).coerceIn(0.0, 1.0).toFloat() else 0f
     val animPct by animateFloatAsState(
@@ -288,7 +288,6 @@ fun CircularProgress(
         Canvas(Modifier.fillMaxSize()) {
             val stroke = strokeWidth.toPx()
             val radius = (this.size.minDimension - stroke) / 2f
-            val center = Offset(this.size.width / 2f, this.size.height / 2f)
             // Track
             drawCircle(color = trackColor, radius = radius, style = androidx.compose.ui.graphics.drawscope.Stroke(stroke))
             // Progress arc
@@ -311,9 +310,9 @@ fun CircularProgress(
 
 @Composable
 fun SectionHeader(
+    modifier: Modifier = Modifier,
     title: String,
     trailingContent: @Composable (() -> Unit)? = null,
-    modifier: Modifier = Modifier
 ) {
     Row(
         modifier = modifier.fillMaxWidth(),
@@ -329,12 +328,12 @@ fun SectionHeader(
 
 @Composable
 fun EmptyState(
+    modifier: Modifier = Modifier,
     icon: @Composable () -> Unit,
     title: String,
     subtitle: String,
     actionLabel: String? = null,
     onAction: (() -> Unit)? = null,
-    modifier: Modifier = Modifier
 ) {
     Column(
         modifier = modifier
@@ -505,6 +504,7 @@ fun StockIndicator(isLow: Boolean, isOut: Boolean, modifier: Modifier = Modifier
 
 @Composable
 fun TagAwareSearchBar(
+    modifier: Modifier = Modifier,
     textQuery: String,
     onTextQueryChange: (String) -> Unit,
     appliedTagFilters: Set<String>,
@@ -513,7 +513,6 @@ fun TagAwareSearchBar(
     onTagRemoved: (String) -> Unit,
     placeholder: String = "Search…",
     trailingContent: @Composable (() -> Unit)? = null,
-    modifier: Modifier = Modifier
 ) {
     var showSuggestions by remember { mutableStateOf(false) }
 

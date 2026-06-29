@@ -115,10 +115,11 @@ import com.martin.storage.data.model.GroceryItem
 import com.martin.storage.data.model.LocalFoodItem
 import com.martin.storage.data.model.NutritionInfo
 import com.martin.storage.data.model.defaultUnits
-import com.martin.storage.data.model.groceryCategories
 import com.martin.storage.data.model.sampleGroceryItems
 import com.martin.storage.data.model.todayDateStr
 import com.martin.storage.data.repository.AppRepository
+import com.martin.storage.ui.components.AddCategoryDialog
+import com.martin.storage.ui.components.EditCategoryDialog
 import com.martin.storage.ui.components.EmptyState
 import com.martin.storage.ui.components.ExpiryBadge
 import com.martin.storage.ui.components.FilterChip
@@ -144,8 +145,6 @@ import com.martin.storage.ui.theme.SurfaceContainerLowest
 import com.martin.storage.ui.theme.Tertiary
 import com.martin.storage.ui.theme.TertiaryContainer
 import com.martin.storage.ui.theme.VitalityFluxTheme
-import com.martin.storage.ui.components.AddCategoryDialog
-import com.martin.storage.ui.components.EditCategoryDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -225,9 +224,9 @@ fun InventoryScreen(
                         if (state.lowStockCount > 0 || state.expiringCount > 0) {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 if (state.lowStockCount > 0)
-                                    NutrientChip("${state.lowStockCount} Low", color = SecondaryContainer.copy(.35f), textColor = Secondary)
+                                    NutrientChip(label = "${state.lowStockCount} Low", color = SecondaryContainer.copy(.35f), textColor = Secondary)
                                 if (state.expiringCount > 0)
-                                    NutrientChip("${state.expiringCount} Expiring", color = ErrorContainer.copy(.5f), textColor = Error)
+                                    NutrientChip(label = "${state.expiringCount} Expiring", color = ErrorContainer.copy(.5f), textColor = Error)
                             }
                         }
                     }
@@ -571,7 +570,7 @@ private fun GroceryListItem(
                         ) {
                             item.tags.forEach { tag ->
                                 NutrientChip(
-                                    tag,
+                                    label = tag,
                                     color = TertiaryContainer.copy(.25f),
                                     textColor = Tertiary,
                                     modifier = Modifier.widthIn(max = 90.dp)

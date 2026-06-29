@@ -478,7 +478,7 @@ private fun RecipeCard(
             if (recipe.tags.isNotEmpty()) {
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     recipe.tags.take(4).forEach { tag ->
-                        NutrientChip(tag, color = TertiaryContainer.copy(.25f), textColor = Tertiary)
+                        NutrientChip(label = tag, color = TertiaryContainer.copy(.25f), textColor = Tertiary)
                     }
                 }
             }
@@ -496,7 +496,7 @@ private fun RecipeCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 NutrientChip(
-                    if (canMake) "✓ Can Make" else "⚠ Missing Items",
+                    label = if (canMake) "✓ Can Make" else "⚠ Missing Items",
                     color = if (canMake) TertiaryContainer.copy(.3f) else SecondaryContainer.copy(.3f),
                     textColor = if (canMake) Tertiary else Secondary
                 )
@@ -808,7 +808,7 @@ private fun PreparedMealCard(
                         Text("Eaten", style = MaterialTheme.typography.labelSmall)
                     }
                 } else {
-                    NutrientChip("✓ Consumed", color = TertiaryContainer.copy(0.3f), textColor = Tertiary)
+                    NutrientChip(label = "✓ Consumed", color = TertiaryContainer.copy(0.3f), textColor = Tertiary)
                 }
                 IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
                     Icon(Icons.Default.Close, null, tint = OnSurfaceVariant, modifier = Modifier.size(18.dp))
